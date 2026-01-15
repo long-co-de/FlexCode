@@ -63,6 +63,8 @@ use App\Http\Controllers\User\CardController;
 use App\Models\Beneficiary;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Support\Facades\Artisan;
+use App\Http\Controllers\User\FeedbackController;
+use App\Http\Controllers\User\PaymentRetrievalController;
 
 // About and Contact pages
 Route::get('/about', [AboutController::class, 'index'])->name('about');
@@ -174,6 +176,15 @@ Route::middleware(['auth', 'verified', \App\Http\Middleware\CheckActive::class])
             Route::get('/referral', [ReferralController::class, 'index'])->name('referral.index');
             Route::post('/referral/share-whatsapp', [ReferralController::class, 'shareWhatsapp'])->name('referral.share-whatsapp');
             Route::get('/referral/link', [ReferralController::class, 'getLink'])->name('referral.link');
+
+            // Feedback
+            Route::post('/feedback', [FeedbackController::class, 'store'])->name('feedback.store');
+            Route::get('/feedback', [FeedbackController::class, 'index'])->name('feedback.index');
+            Route::get('/feedback/{feedback}', [FeedbackController::class, 'show'])->name('feedback.show');
+
+            // Payment Retrieval
+            Route::get('/payment-retrieval', [PaymentRetrievalController::class, 'show'])->name('payment-retrieval.show');
+            Route::post('/payment-retrieval/verify', [PaymentRetrievalController::class, 'retrieve'])->name('payment-retrieval.verify');
 
             // Coupons
             Route::post('/coupons/redeem', [CouponController::class, 'redeem'])->name('coupons.redeem');

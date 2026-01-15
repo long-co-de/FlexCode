@@ -1,12 +1,10 @@
 import { useState, useRef } from 'react';
-import { Head, useForm } from '@inertiajs/react';
+import { Head, useForm, usePage } from '@inertiajs/react';
 import AppLayout from '@/Layouts/AppLayout';
-import InputError from '@/Components/InputError';
-import InputLabel from '@/Components/InputLabel';
-import TextInput from '@/Components/TextInput';
-import PrimaryButton from '@/Components/PrimaryButton';
+import { FaLock, FaKey, FaShieldAlt, FaArrowRight, FaCheckCircle, FaExclamationTriangle } from 'react-icons/fa';
 
-export default function PinReset({ auth }) {
+export default function PinReset() {
+    const { auth } = usePage().props;
     const [newPin, setNewPin] = useState(['', '', '', '']);
     const [confirmPin, setConfirmPin] = useState(['', '', '', '']);
     const [step, setStep] = useState(1);
@@ -43,7 +41,6 @@ export default function PinReset({ auth }) {
     };
 
     const handleKeyDown = (e, index, pinType) => {
-        // Handle backspace
         if (e.key === 'Backspace') {
             if (pinType === 'new') {
                 if (index > 0 && !newPin[index]) {
@@ -59,25 +56,22 @@ export default function PinReset({ auth }) {
 
     const handlePasswordSubmit = (e) => {
         e.preventDefault();
-        
         if (!data.password) {
             setError('password', 'Please enter your account password');
             return;
         }
-        
         setStep(2);
-        // Focus on first new PIN input
         setTimeout(() => {
-            newPinRefs[0].current.focus();
+            newPinRefs[0].current?.focus();
         }, 100);
     };
 
-    const handleNewPinContinue = () => {
+    const handleNewPinContinue = (e) => {
+        if (e) e.preventDefault();
         if (newPin.every(digit => digit !== '')) {
             setStep(3);
-            // Focus on first confirmation input
             setTimeout(() => {
-                confirmPinRefs[0].current.focus();
+                confirmPinRefs[0].current?.focus();
             }, 100);
         }
     };
@@ -92,7 +86,7 @@ export default function PinReset({ auth }) {
             setError('pin_confirmation', 'PINs do not match. Please try again.');
             setConfirmPin(['', '', '', '']);
             setTimeout(() => {
-                confirmPinRefs[0].current.focus();
+                confirmPinRefs[0].current?.focus();
             }, 100);
             return;
         }
@@ -104,9 +98,6 @@ export default function PinReset({ auth }) {
         });
         
         post(route('pin.reset-with-password'), {
-            onSuccess: () => {
-                // PIN reset successful, redirect will be handled by the controller
-            },
             onError: (errors) => {
                 if (errors.password) {
                     setStep(1);
@@ -115,119 +106,144 @@ export default function PinReset({ auth }) {
         });
     };
 
+    const renderStepHeader = () => {
+        switch(step) {
+            case 1:
+                return {
+                    icon: <FaKey />,
+                    title: "Verify Identity",
+                    desc: "Enter your account password to authorize PIN reset."
+                };
+            case 2:
+                return {
+                    icon: <FaShieldAlt />,
+                    title: "Create New PIN",
+                    desc: "Choose a secure 4-digit PIN for your transactions."
+                };
+            case 3:
+                return {
+                    icon: <FaCheckCircle />,
+                    title: "Confirm PIN",
+                    desc: "Re-enter your new PIN to ensure accuracy."
+                };
+        }
+    };
+
+    const header = renderStepHeader();
+
     return (
-        <AppLayout
-            header={<h2 className="font-semibold text-xl igg-800 leading-tight">Reset PIN</h2>}
-        >
+        <AppLayout user={auth.user}>
             <Head title="Reset PIN" />
             
-            <div className="py-6">
-                <div className="max-w-md mx-auto">
-                    <div className="card bg-base-100 shadow-md">
-                        <div className="card-body">
-                            <h2 className="text-2xl font-semibold mb-6 text-center">
-                                {step === 1 ? 'Verify Your Identity' : 
-                                 step === 2 ? 'Create New PIN' : 
-                                 'Confirm New PIN'}
-                            </h2>
-                            
-                            <p className="text-center mb-8 igg-600">
-                                {step === 1 ? 'Please enter your account password to verify your identity.' : 
-                                 step === 2 ? 'Create a new 4-digit PIN.' : 
-                                 'Please re-enter your new PIN to confirm.'}
-                            </p>
-                            
-                            {step === 1 ? (
-                                <form onSubmit={handlePasswordSubmit} className="space-y-6">
-                                    <div>
-                                        <InputLabel htmlFor="password" value="Account Password" />
-                                        <TextInput
-                                            id="password"
+            <div className="min-h-[80vh] flex flex-col items-center justify-center py-12 px-4">
+                <div className="max-w-md w-full">
+                    {/* Header */}
+                    <div className="text-center mb-10">
+                        <div className="inline-flex items-center justify-center w-20 h-20 bg-sky-50 rounded-[2rem] text-sky-500 mb-6 border border-sky-100 shadow-sm transition-transform hover:scale-110">
+                            <span className="text-3xl">{header.icon}</span>
+                        </div>
+                        <h2 className="text-3xl font-black text-slate-800 mb-2">{header.title}</h2>
+                        <p className="text-slate-500 font-medium px-4">{header.desc}</p>
+                    </div>
+
+                    <div className="bg-white rounded-[2.5rem] p-8 md:p-10 shadow-2xl shadow-slate-200/50 border border-slate-100 relative overflow-hidden">
+                        {/* Progress Dots */}
+                        <div className="flex justify-center gap-2 mb-8">
+                            {[1, 2, 3].map(i => (
+                                <div key={i} className={`h-1.5 rounded-full transition-all duration-500 ${step >= i ? 'w-8 bg-sky-500' : 'w-2 bg-slate-100'}`}></div>
+                            ))}
+                        </div>
+
+                        {step === 1 ? (
+                            <form onSubmit={handlePasswordSubmit} className="space-y-6">
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Account Password</label>
+                                    <div className="relative group">
+                                        <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400 group-focus-within:text-sky-500 transition-colors">
+                                            <FaLock className="text-sm" />
+                                        </div>
+                                        <input
                                             type="password"
-                                            name="password"
                                             value={data.password}
-                                            className="mt-1 block w-full"
-                                            autoComplete="current-password"
                                             onChange={(e) => setData('password', e.target.value)}
+                                            className="w-full h-14 pl-12 pr-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:border-sky-500 focus:bg-white transition-all outline-none font-bold"
+                                            placeholder="••••••••"
                                             required
                                         />
-                                        <InputError message={errors.password} className="mt-2" />
                                     </div>
-                                    
-                                    <div className="flex justify-center">
-                                        <PrimaryButton
-                                            type="submit"
-                                            disabled={!data.password || processing}
-                                            className="w-full justify-center"
-                                        >
-                                            Continue
-                                        </PrimaryButton>
+                                    {errors.password && (
+                                        <p className="text-[10px] font-bold text-rose-500 flex items-center gap-1 px-1">
+                                            <FaExclamationTriangle className="text-[8px]" /> {errors.password}
+                                        </p>
+                                    )}
+                                </div>
+                                
+                                <button
+                                    type="submit"
+                                    disabled={!data.password || processing}
+                                    className="w-full h-14 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-800 transition-all shadow-lg shadow-slate-200 disabled:opacity-50 flex items-center justify-center gap-2"
+                                >
+                                    Continue
+                                    <FaArrowRight className="text-[10px]" />
+                                </button>
+                            </form>
+                        ) : (
+                            <form onSubmit={step === 2 ? handleNewPinContinue : handleSubmit} className="space-y-8">
+                                <div className="flex justify-between gap-4">
+                                    {(step === 2 ? newPin : confirmPin).map((digit, index) => (
+                                        <input
+                                            key={index}
+                                            type="password"
+                                            inputMode="numeric"
+                                            maxLength="1"
+                                            ref={step === 2 ? newPinRefs[index] : confirmPinRefs[index]}
+                                            value={digit}
+                                            onChange={(e) => handlePinChange(index, e.target.value, step === 2 ? 'new' : 'confirm')}
+                                            onKeyDown={(e) => handleKeyDown(e, index, step === 2 ? 'new' : 'confirm')}
+                                            className={`w-full h-16 md:h-20 text-center text-3xl font-black rounded-2xl border-2 transition-all outline-none
+                                                ${digit 
+                                                    ? 'border-sky-500 bg-sky-50 text-slate-800' 
+                                                    : 'border-slate-100 bg-slate-50 text-slate-400 focus:border-sky-200'
+                                                }`}
+                                            required
+                                        />
+                                    ))}
+                                </div>
+                                
+                                {(errors.pin || errors.pin_confirmation) && (
+                                    <div className="bg-rose-50 border border-rose-100 rounded-2xl p-4 flex items-center gap-3">
+                                        <FaExclamationTriangle className="text-rose-500 flex-shrink-0" />
+                                        <p className="text-[10px] font-bold text-rose-800">{errors.pin || errors.pin_confirmation}</p>
                                     </div>
-                                </form>
-                            ) : (
-                                <form onSubmit={step === 2 ? handleNewPinContinue : handleSubmit}>
-                                    <div className="flex justify-center gap-4 mb-8">
-                                        {step === 2 ? (
-                                            // New PIN inputs
-                                            newPin.map((digit, index) => (
-                                                <input
-                                                    key={index}
-                                                    type="text"
-                                                    inputMode="numeric"
-                                                    maxLength="1"
-                                                    ref={newPinRefs[index]}
-                                                    value={digit}
-                                                    onChange={(e) => handlePinChange(index, e.target.value, 'new')}
-                                                    onKeyDown={(e) => handleKeyDown(e, index, 'new')}
-                                                    className="w-16 h-16 text-center text-2xl border-2 border-gray-300 rounded-lg focus:border-primary-500 focus:ring focus:ring-primary-200"
-                                                    required
-                                                />
-                                            ))
-                                        ) : (
-                                            // Confirm PIN inputs
-                                            confirmPin.map((digit, index) => (
-                                                <input
-                                                    key={index}
-                                                    type="text"
-                                                    inputMode="numeric"
-                                                    maxLength="1"
-                                                    ref={confirmPinRefs[index]}
-                                                    value={digit}
-                                                    onChange={(e) => handlePinChange(index, e.target.value, 'confirm')}
-                                                    onKeyDown={(e) => handleKeyDown(e, index, 'confirm')}
-                                                    className="w-16 h-16 text-center text-2xl border-2 border-gray-300 rounded-lg focus:border-primary-500 focus:ring focus:ring-primary-200"
-                                                    required
-                                                />
-                                            ))
-                                        )}
-                                    </div>
-                                    
-                                    {step === 2 && errors.pin && <InputError message={errors.pin} className="mt-2" />}
-                                    {step === 3 && errors.pin_confirmation && <InputError message={errors.pin_confirmation} className="mt-2" />}
-                                    
-                                    <div className="flex justify-center">
-                                        {step === 2 ? (
-                                            <PrimaryButton
-                                                type="button"
-                                                onClick={handleNewPinContinue}
-                                                disabled={!newPin.every(digit => digit !== '')}
-                                                className="w-full justify-center"
-                                            >
-                                                Continue
-                                            </PrimaryButton>
-                                        ) : (
-                                            <PrimaryButton
-                                                type="submit"
-                                                disabled={!confirmPin.every(digit => digit !== '') || processing}
-                                                className="w-full justify-center"
-                                            >
-                                                {processing ? 'Resetting...' : 'Reset PIN'}
-                                            </PrimaryButton>
-                                        )}
-                                    </div>
-                                </form>
-                            )}
-                        </div>
+                                )}
+                                
+                                <button
+                                    type="submit"
+                                    disabled={!(step === 2 ? newPin : confirmPin).every(digit => digit !== '') || processing}
+                                    className="w-full h-14 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-800 transition-all shadow-lg shadow-slate-200 disabled:opacity-50 flex items-center justify-center gap-2"
+                                >
+                                    {processing ? (
+                                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                                    ) : (
+                                        <>
+                                            {step === 2 ? 'Continue' : 'Reset PIN'}
+                                            <FaArrowRight className="text-[10px]" />
+                                        </>
+                                    )}
+                                </button>
+
+                                <button 
+                                    type="button"
+                                    onClick={() => setStep(step - 1)}
+                                    className="w-full text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-colors"
+                                >
+                                    Go Back
+                                </button>
+                            </form>
+                        )}
+                        
+                        {/* Background decoration */}
+                        <div className="absolute top-0 right-0 w-32 h-32 bg-sky-500/5 blur-3xl -mr-16 -mt-16 rounded-full"></div>
                     </div>
                 </div>
             </div>

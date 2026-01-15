@@ -385,6 +385,28 @@ class AdvancedCreditScoringService
             ];
         }
 
+        // Check if active card is expired
+        $activeCard = $user->cards()->where('is_active', true)->first();
+        if ($activeCard && $activeCard->isExpired()) {
+            return [
+                'status' => 'not_eligible',
+                'reason' => 'Your linked card has expired. Please link a new card to continue borrowing.',
+                'action' => 'Link a new payment card',
+                'card_expired' => true,
+            ];
+        }
+
+        // Check if active card is expiring soon (within 60 days)
+        if ($activeCard && $activeCard->isExpiringsoon()) {
+            return [
+                'status' => 'eligible_with_warning',
+                'reason' => 'Your account is eligible for borrowing, but your card is expiring soon',
+                'action' => 'Please link a new card to ensure continuous borrowing access',
+                'card_expiring_soon' => true,
+                'days_until_expiration' => $activeCard->getDaysUntilExpiration(),
+            ];
+        }
+
         // Check if user has pending/active borrowings
         $pendingBorrowings = $user->borrowings()
             ->whereIn('status', ['active', 'overdue'])

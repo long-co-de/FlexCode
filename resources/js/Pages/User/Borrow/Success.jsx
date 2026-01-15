@@ -1,196 +1,189 @@
 import React from 'react';
-import { Head, Link } from '@inertiajs/react';
+import { Head, Link, usePage } from '@inertiajs/react';
 import AppLayout from '@/Layouts/AppLayout';
+import { 
+    FaCheckCircle, FaPhone, FaWifi, FaLightbulb, FaTv, 
+    FaArrowRight, FaClock, FaHistory, FaInfoCircle, FaShieldAlt,
+    FaMoneyBillWave, FaCalendarAlt
+} from 'react-icons/fa';
+import { GiReceiveMoney } from 'react-icons/gi';
 
 const Success = ({ borrowing }) => {
+    const { auth } = usePage().props;
+
     const formatDate = (date) => {
-        return new Date(date).toLocaleDateString('en-US', {
-            weekday: 'short',
-            year: 'numeric',
+        return new Date(date).toLocaleDateString('en-GB', {
+            day: 'numeric',
             month: 'short',
-            day: 'numeric'
+            year: 'numeric'
         });
     };
 
-    const serviceTypeIcon = {
-        airtime: '📞',
-        data: '📱',
-        electricity: '⚡',
-        cable: '📺'
+    const serviceIcons = {
+        airtime: <FaPhone />,
+        data: <FaWifi />,
+        electricity: <FaLightbulb />,
+        cable: <FaTv />
+    };
+
+    const serviceColors = {
+        airtime: 'text-blue-500 bg-blue-50',
+        data: 'text-emerald-500 bg-emerald-50',
+        electricity: 'text-rose-500 bg-rose-50',
+        cable: 'text-amber-500 bg-amber-50'
     };
 
     return (
-        <AppLayout>
+        <AppLayout user={auth.user}>
             <Head title="Borrowing Successful" />
             
-            <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-8 px-4">
-                <div className="max-w-2xl mx-auto">
-                    {/* Success Card */}
-                    <div className="bg-white rounded-lg shadow-lg overflow-hidden">
-                        {/* Success Header */}
-                        <div className="bg-gradient-to-r from-green-500 to-green-600 px-6 py-12 text-center">
-                            <div className="inline-flex items-center justify-center w-16 h-16 bg-white rounded-full mb-4">
-                                <svg className="w-8 h-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                </svg>
+            <div className="py-12 max-w-3xl mx-auto px-4">
+                {/* Success Card */}
+                <div className="bg-white rounded-[3rem] shadow-xl shadow-slate-200/50 border border-slate-100 overflow-hidden">
+                    {/* Header Section */}
+                    <div className="bg-gradient-to-br from-slate-900 to-slate-800 p-12 text-center relative overflow-hidden">
+                        <div className="relative z-10 flex flex-col items-center">
+                            <div className="w-24 h-24 bg-emerald-500/20 backdrop-blur-md rounded-[2rem] flex items-center justify-center mb-6 border border-emerald-500/30 animate-bounce">
+                                <FaCheckCircle className="text-4xl text-emerald-400" />
                             </div>
-                            <h1 className="text-3xl font-bold text-white mb-2">
-                                Borrowing Successful!
-                            </h1>
-                            <p className="text-green-100">
-                                Your {borrowing.type} has been successfully borrowed
-                            </p>
+                            <h1 className="text-3xl font-black text-white mb-2">Borrowing Successful!</h1>
+                            <p className="text-slate-400 text-sm font-medium">Your request has been processed and your account credited.</p>
                         </div>
-
-                        {/* Borrowing Details */}
-                        <div className="px-6 py-8 space-y-6">
-                            {/* Service Summary */}
-                            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-6 border border-blue-200">
-                                <div className="flex items-start justify-between">
-                                    <div className="flex items-start space-x-4">
-                                        <div className="text-4xl">
-                                            {serviceTypeIcon[borrowing.type] || '💳'}
-                                        </div>
-                                        <div>
-                                            <h3 className="text-lg font-semibold text-gray-900 capitalize">
-                                                {borrowing.type} Borrowed
-                                            </h3>
-                                            <p className="text-sm text-gray-600 mt-1">
-                                                Reference: <span className="font-mono font-medium">{borrowing.reference}</span>
-                                            </p>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Amount Breakdown */}
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div className="bg-gray-50 rounded-lg p-4">
-                                    <p className="text-sm text-gray-600">Amount Borrowed</p>
-                                    <p className="text-2xl font-bold text-gray-900 mt-1">
-                                        ₦{borrowing.amount.toLocaleString()}
-                                    </p>
-                                </div>
-                                <div className="bg-gray-50 rounded-lg p-4">
-                                    <p className="text-sm text-gray-600">Interest Rate</p>
-                                    <p className="text-2xl font-bold text-gray-900 mt-1">
-                                        {borrowing.interest_rate}%
-                                    </p>
-                                </div>
-                                <div className="bg-red-50 rounded-lg p-4">
-                                    <p className="text-sm text-gray-600">Interest Amount</p>
-                                    <p className="text-2xl font-bold text-red-600 mt-1">
-                                        ₦{Math.round(borrowing.amount * borrowing.interest_rate / 100).toLocaleString()}
-                                    </p>
-                                </div>
-                                <div className="bg-blue-50 rounded-lg p-4 border-2 border-blue-500">
-                                    <p className="text-sm text-gray-600">Total Due</p>
-                                    <p className="text-2xl font-bold text-blue-600 mt-1">
-                                        ₦{borrowing.total_amount.toLocaleString()}
-                                    </p>
-                                </div>
-                            </div>
-
-                            {/* Due Date */}
-                            <div className="border-l-4 border-yellow-400 bg-yellow-50 p-4 rounded">
-                                <p className="text-sm font-medium text-gray-900 mb-1">Repayment Due Date</p>
-                                <p className="text-lg font-bold text-gray-900">
-                                    {formatDate(borrowing.due_date)}
-                                </p>
-                                <p className="text-sm text-gray-600 mt-2">
-                                    ⚠️ Please ensure you have funds available on or before the due date for automatic repayment
-                                </p>
-                            </div>
-
-                            {/* Auto-Deduction Notice */}
-                            {borrowing.auto_deduction_enabled && (
-                                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                                    <div className="flex items-start">
-                                        <svg className="w-5 h-5 text-green-600 mr-3 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                                        </svg>
-                                        <div>
-                                            <p className="font-medium text-green-900">Auto-Deduction Enabled</p>
-                                            <p className="text-sm text-green-700 mt-1">
-                                                Your linked card will be automatically charged on the due date
-                                            </p>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Service Details */}
-                            <div className="border-t pt-6">
-                                <h4 className="font-semibold text-gray-900 mb-3">Service Details</h4>
-                                <div className="bg-gray-50 rounded-lg p-4 text-sm">
-                                    {borrowing.type === 'airtime' && (
-                                        <div className="space-y-2">
-                                            <div className="flex justify-between">
-                                                <span className="text-gray-600">Network:</span>
-                                                <span className="font-medium">{borrowing.transaction_details?.network || 'N/A'}</span>
-                                            </div>
-                                            <div className="flex justify-between">
-                                                <span className="text-gray-600">Phone Number:</span>
-                                                <span className="font-mono font-medium">{borrowing.transaction_details?.phone || 'N/A'}</span>
-                                            </div>
-                                        </div>
-                                    )}
-                                    {borrowing.type === 'data' && (
-                                        <div className="space-y-2">
-                                            <div className="flex justify-between">
-                                                <span className="text-gray-600">Network:</span>
-                                                <span className="font-medium">{borrowing.transaction_details?.network || 'N/A'}</span>
-                                            </div>
-                                            <div className="flex justify-between">
-                                                <span className="text-gray-600">Phone Number:</span>
-                                                <span className="font-mono font-medium">{borrowing.transaction_details?.phone || 'N/A'}</span>
-                                            </div>
-                                        </div>
-                                    )}
-                                    {borrowing.type === 'electricity' && (
-                                        <div className="space-y-2">
-                                            <div className="flex justify-between">
-                                                <span className="text-gray-600">Meter Number:</span>
-                                                <span className="font-mono font-medium">{borrowing.transaction_details?.meter || 'N/A'}</span>
-                                            </div>
-                                            <div className="flex justify-between">
-                                                <span className="text-gray-600">Provider:</span>
-                                                <span className="font-medium">{borrowing.transaction_details?.provider || 'N/A'}</span>
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-
-                            {/* Action Buttons */}
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4">
-                                <Link
-                                    href={route('borrow.my-borrowings')}
-                                    className="inline-block bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-6 rounded-lg text-center transition"
-                                >
-                                    View My Borrowings
-                                </Link>
-                                <Link
-                                    href={route('dashboard')}
-                                    className="inline-block bg-gray-600 hover:bg-gray-700 text-white font-medium py-3 px-6 rounded-lg text-center transition"
-                                >
-                                    Back to Dashboard
-                                </Link>
-                            </div>
-                        </div>
+                        
+                        {/* Background decoration */}
+                        <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/10 blur-3xl -mr-32 -mt-32 rounded-full"></div>
+                        <div className="absolute bottom-0 left-0 w-48 h-48 bg-sky-500/10 blur-3xl -ml-24 -mb-24 rounded-full"></div>
                     </div>
 
-                    {/* Info Box */}
-                    <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-6 text-center">
-                        <p className="text-sm text-gray-600 mb-2">Need help?</p>
-                        <p className="text-gray-700">
-                            For questions about your borrowing or repayment, please visit the
-                            <Link href={route('contact')} className="text-blue-600 hover:text-blue-800 font-medium mx-1">
-                                contact page
+                    <div className="p-8 md:p-12 space-y-10">
+                        {/* Service Summary */}
+                        <div className="flex items-center justify-between p-6 bg-slate-50 rounded-3xl border border-slate-100">
+                            <div className="flex items-center gap-5">
+                                <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-xl ${serviceColors[borrowing.type] || 'text-sky-500 bg-sky-50'}`}>
+                                    {serviceIcons[borrowing.type] || <FaMoneyBillWave />}
+                                </div>
+                                <div>
+                                    <h3 className="font-black text-slate-800 capitalize text-lg">{borrowing.type} Borrowed</h3>
+                                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Ref: {borrowing.reference}</p>
+                                </div>
+                            </div>
+                            <div className="text-right">
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Amount</p>
+                                <p className="text-2xl font-black text-slate-900">₦{borrowing.amount.toLocaleString()}</p>
+                            </div>
+                        </div>
+
+                        {/* Financial Breakdown */}
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                            <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm">
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-2">Interest</p>
+                                <p className="text-lg font-black text-rose-500">{borrowing.interest_rate}%</p>
+                            </div>
+                            <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm">
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-2">Interest Fee</p>
+                                <p className="text-lg font-black text-rose-500">₦{Math.round(borrowing.amount * borrowing.interest_rate / 100).toLocaleString()}</p>
+                            </div>
+                            <div className="bg-sky-50 p-5 rounded-3xl border border-sky-100 shadow-sm col-span-2 md:col-span-1">
+                                <p className="text-[10px] font-black text-sky-400 uppercase tracking-widest leading-none mb-2">Total Repayment</p>
+                                <p className="text-lg font-black text-sky-600">₦{borrowing.total_amount.toLocaleString()}</p>
+                            </div>
+                        </div>
+
+                        {/* Repayment Banner */}
+                        <div className="bg-amber-50 rounded-[2rem] p-8 border border-amber-100 relative overflow-hidden group">
+                            <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+                                <div className="flex items-center gap-5">
+                                    <div className="w-12 h-12 rounded-xl bg-amber-500 flex items-center justify-center text-white text-xl flex-shrink-0">
+                                        <FaCalendarAlt />
+                                    </div>
+                                    <div>
+                                        <h4 className="font-black text-amber-900 uppercase tracking-tight">Repayment Due Date</h4>
+                                        <p className="text-2xl font-black text-amber-600">{formatDate(borrowing.due_date)}</p>
+                                    </div>
+                                </div>
+                                <div className="bg-white/50 backdrop-blur-sm px-4 py-2 rounded-xl border border-amber-200">
+                                    <p className="text-[10px] font-bold text-amber-800 leading-tight">
+                                        Ensure funds are available for <br/>automatic settlement.
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/5 blur-3xl -mr-16 -mt-16 rounded-full group-hover:scale-150 transition-transform duration-1000"></div>
+                        </div>
+
+                        {/* Transaction Details */}
+                        <div className="space-y-4">
+                            <h4 className="px-2 text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                                <FaInfoCircle /> Service Details
+                            </h4>
+                            <div className="bg-slate-50 rounded-3xl p-6 border border-slate-100 space-y-4">
+                                {borrowing.type === 'airtime' && (
+                                    <>
+                                        <div className="flex justify-between items-center text-sm">
+                                            <span className="font-bold text-slate-500 uppercase tracking-wider text-[10px]">Network</span>
+                                            <span className="font-black text-slate-800 uppercase">{borrowing.transaction_details?.network || 'N/A'}</span>
+                                        </div>
+                                        <div className="flex justify-between items-center text-sm">
+                                            <span className="font-bold text-slate-500 uppercase tracking-wider text-[10px]">Phone Number</span>
+                                            <span className="font-black text-slate-800">{borrowing.transaction_details?.phone || 'N/A'}</span>
+                                        </div>
+                                    </>
+                                )}
+                                {borrowing.type === 'data' && (
+                                    <>
+                                        <div className="flex justify-between items-center text-sm">
+                                            <span className="font-bold text-slate-500 uppercase tracking-wider text-[10px]">Plan</span>
+                                            <span className="font-black text-slate-800 uppercase">{borrowing.transaction_details?.network || 'N/A'}</span>
+                                        </div>
+                                        <div className="flex justify-between items-center text-sm">
+                                            <span className="font-bold text-slate-500 uppercase tracking-wider text-[10px]">Recipient</span>
+                                            <span className="font-black text-slate-800">{borrowing.transaction_details?.phone || 'N/A'}</span>
+                                        </div>
+                                    </>
+                                )}
+                                {borrowing.type === 'electricity' && (
+                                    <>
+                                        <div className="flex justify-between items-center text-sm">
+                                            <span className="font-bold text-slate-500 uppercase tracking-wider text-[10px]">Provider</span>
+                                            <span className="font-black text-slate-800 uppercase">{borrowing.transaction_details?.provider || 'N/A'}</span>
+                                        </div>
+                                        <div className="flex justify-between items-center text-sm">
+                                            <span className="font-bold text-slate-500 uppercase tracking-wider text-[10px]">Meter Number</span>
+                                            <span className="font-black text-slate-800">{borrowing.transaction_details?.meter || 'N/A'}</span>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Action Buttons */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4">
+                            <Link
+                                href={route('borrow.my-borrowings')}
+                                className="h-14 px-8 rounded-2xl bg-slate-900 text-white font-black text-sm hover:bg-slate-800 transition-all shadow-xl shadow-slate-200 flex items-center justify-center gap-2 group"
+                            >
+                                <FaHistory className="text-xs group-hover:rotate-[-45deg] transition-transform" />
+                                My Borrowings
                             </Link>
-                            or chat with our support team.
-                        </p>
+                            <Link
+                                href={route('dashboard')}
+                                className="h-14 px-8 rounded-2xl bg-white text-slate-800 font-black text-sm border border-slate-200 hover:bg-slate-50 transition-all flex items-center justify-center gap-2 group"
+                            >
+                                <FaArrowRight className="text-xs group-hover:translate-x-1 transition-transform" />
+                                Home Dashboard
+                            </Link>
+                        </div>
                     </div>
+                </div>
+
+                {/* Support Box */}
+                <div className="mt-8 bg-sky-50/50 backdrop-blur-sm rounded-3xl p-6 border border-sky-100 flex items-center gap-4">
+                    <div className="w-10 h-10 rounded-xl bg-sky-500/10 flex items-center justify-center text-sky-600">
+                        <FaShieldAlt />
+                    </div>
+                    <p className="text-xs font-bold text-sky-800 leading-relaxed">
+                        Need assistance? For any questions about this borrowing or repayment, 
+                        contact our <Link href={route('contact')} className="text-sky-600 underline">support team</Link>.
+                    </p>
                 </div>
             </div>
         </AppLayout>
@@ -198,3 +191,4 @@ const Success = ({ borrowing }) => {
 };
 
 export default Success;
+

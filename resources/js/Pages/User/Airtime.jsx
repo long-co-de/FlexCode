@@ -185,7 +185,7 @@ export default function Airtime({ auth, networks, beneficiaries = [] }) {
         }
 
         setVerifyingPin(true);
-        const routeName = useBNPL ? 'borrow.airtime.process' : 'airtime.purchase';
+        const routeName = data.use_bnpl ? 'borrow.airtime.process' : 'airtime.purchase';
         
         router.post(route(routeName), {
             ...data,
@@ -257,7 +257,7 @@ export default function Airtime({ auth, networks, beneficiaries = [] }) {
                         <div className="lg:col-span-8 space-y-6">
                             <form onSubmit={handleSubmit} className="space-y-6">
                                 {/* Airtime Type */}
-                                <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100">
+                                <div className="bg-white hidden rounded-3xl p-6 shadow-sm border border-slate-100">
                                     <h4 className="text-sm font-bold text-slate-800 mb-4 flex items-center gap-2">
                                         <FaTag className="text-sky-500" />
                                         Select Airtime Type

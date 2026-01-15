@@ -7,13 +7,13 @@ import { useState, useEffect } from "react";
 
 function WebviewWelcome({ auth }) {
     const [name, setName] = useState("");
-    const [email, setEmail] = useState("");
+    const [email, setEmail] = useState(localStorage?.getItem("auth_email"));
     const [showPassword, setShowPassword] = useState(false);
     const [isReturningUser, setIsReturningUser] = useState(false);
 
     useEffect(() => {
         const storedName = localStorage?.getItem("last_name") || (auth?.user?.name ?? "");
-        const storedEmail = localStorage?.getItem("auth_email") || (auth?.user?.email ?? "");
+        const storedEmail = localStorage?.getItem("auth_email");
         setName(storedName);
         setEmail(storedEmail);
         // Set returning user if email exists
@@ -23,6 +23,9 @@ function WebviewWelcome({ auth }) {
     if (auth.user) {
         router.get("/dashboard");
     }
+    // if(email === null || email === "") {
+    //     router.get(route('login'));
+    // }
 
     const { data, setData, post, processing, errors, reset } = useForm({
         email: email,

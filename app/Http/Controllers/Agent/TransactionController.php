@@ -17,9 +17,12 @@ class TransactionController extends Controller
      */
     public function index(Request $request)
     {
-        $filters = $request->only(['search', 'status', 'date_from', 'date_to']);
+        $filters = $request->only(['search', 'status', 'date_from', 'date_to', 'user_id']);
 
         $query = Transaction::with('user:id,name,email')
+            ->when($filters['user_id'] ?? null, function ($query, $userId) {
+                $query->where('user_id', $userId);
+            })
             ->when($filters['search'] ?? null, function ($query, $search) {
                 $query->where(function ($query) use ($search) {
                     $query->where('reference', 'like', "%{$search}%")

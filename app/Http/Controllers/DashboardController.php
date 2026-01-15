@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use Inertia\Inertia;
 use App\Models\Transaction;
 use App\Models\User;
+use App\Models\Borrowing;
 use App\Services\DatavendroService;
 use Illuminate\Support\Facades\DB;
 
@@ -21,6 +22,12 @@ class DashboardController extends Controller
     {
         $user = $request->user();
 
+        if($user->isAdmin()){
+            return to_route('admin.dashboard');
+        }
+         if($user->isAgent()){
+            return to_route('agent.dashboard');
+        }
         // Get recent transactions
         $recentTransactions = Transaction::where('user_id', $user->id)
             ->orderBy('created_at', 'desc')
@@ -33,7 +40,7 @@ class DashboardController extends Controller
             'successful' => Transaction::where('user_id', $user->id)->where('status', 'successful')->count(),
             'pending' => Transaction::where('user_id', $user->id)->where('status', 'pending')->count(),
             'failed' => Transaction::where('user_id', $user->id)->where('status', 'failed')->count(),
-            'total_amount' => number_format(Transaction::where(['user_id'=>$user->id,'status'=>'successful'])->sum('amount')??0,0)
+            'total_amount' => number_format(Transaction::where(['user_id' => $user->id, 'status' => 'successful'])->sum('amount') ?? 0, 0)
         ];
 
 
@@ -46,10 +53,24 @@ class DashboardController extends Controller
             ->pluck('count', 'type')
             ->toArray();
 
+        // Get borrowing data
+        $eligibility = $user->borrowingEligibility;
+        $borrowingSummary = [
+            'total_borrowed' => $user->borrowings()->sum('amount'),
+            'total_repaid' => $user->borrowings()->where('status', 'paid')->sum('amount'),
+            'active_borrowings' => $user->activeBorrowings()->count(),
+            'overdue_borrowings' => $user->overdueBorrowings()->count(),
+            'next_due_date' => $user->borrowings()->whereIn('status', ['active', 'overdue'])->min('due_date'),
+            'total_due' => $user->borrowings()->whereIn('status', ['active', 'overdue'])->sum('total_amount'),
+        ];
+
         return Inertia::render('Dashboard', [
             'recentTransactions' => $recentTransactions,
             'transactionStats' => $transactionStats,
             'serviceUsage' => $serviceUsage,
+            'eligibility' => $eligibility,
+            'borrowingSummary' => $borrowingSummary,
+            'has_card' => $user->cards()->exists(),
         ]);
     }
 
@@ -92,6 +113,23 @@ class DashboardController extends Controller
             ->pluck('count', 'type')
             ->toArray();
 
+        // Get borrowing statistics
+        $borrowingStats = [
+            'total_borrowings' => Borrowing::count(),
+            'active_borrowings' => Borrowing::where('status', 'active')->count(),
+            'overdue_borrowings' => Borrowing::where('status', 'overdue')->count(),
+            'paid_borrowings' => Borrowing::where('status', 'paid')->count(),
+            'total_borrowed_amount' => Borrowing::sum('amount'),
+            'total_interest_generated' => Borrowing::sum(DB::raw('total_amount - amount')),
+            'total_repaid_amount' => Borrowing::where('status', 'paid')->sum('total_amount'),
+        ];
+
+        // Get recent borrowings (for display)
+        $recentBorrowings = Borrowing::with('user')
+            ->orderBy('created_at', 'desc')
+            ->limit(10)
+            ->get();
+
         // Get daily transaction amounts for the last 7 days
         $dailyTransactions = Transaction::where('status', 'successful')
             ->where('created_at', '>=', now()->subDays(7))
@@ -114,25 +152,27 @@ class DashboardController extends Controller
 
         // Get API details
         $datavendroService = app(DatavendroService::class);
-        $apiBalance = $datavendroService->getBalance();
-        // $virtualAccounts = $datavendroService->getVirtualAccountDetails(); // Datavendro doesn't have this yet
+        // $apiBalance = $datavendroService->getBalance();
+        // // $virtualAccounts = $datavendroService->getVirtualAccountDetails(); // Datavendro doesn't have this yet
 
-        $apiDetails = [
-            'balance' => $apiBalance['success'] ? $apiBalance['data'] : null,
-            'balanceError' => !$apiBalance['success'] ? $apiBalance['message'] : null,
-            'virtualAccounts' => [], // $virtualAccounts['success'] ? $virtualAccounts['data']['virtual_accounts'] : [],
-            'virtualAccountError' => null,
-            'lastChecked' => now()->format('Y-m-d H:i:s'),
-        ];
+        // $apiDetails = [
+        //     'balance' => $apiBalance['success'] ? $apiBalance['data'] : null,
+        //     'balanceError' => !$apiBalance['success'] ? $apiBalance['message'] : null,
+        //     'virtualAccounts' => [], // $virtualAccounts['success'] ? $virtualAccounts['data']['virtual_accounts'] : [],
+        //     'virtualAccountError' => null,
+        //     'lastChecked' => now()->format('Y-m-d H:i:s'),
+        // ];
 
         return Inertia::render('Admin/Dashboard', [
             'userStats' => $userStats,
             'transactionStats' => $transactionStats,
             'recentTransactions' => $recentTransactions,
+            'borrowingStats' => $borrowingStats,
+            'recentBorrowings' => $recentBorrowings,
             'serviceUsage' => $serviceUsage,
             'dailyTransactions' => $dailyTransactions,
             'chartData' => $chartData,
-            'apiDetails' => $apiDetails,
+            'apiDetails' => [],
             'stats' => [
                 'totalUsers' => $userStats['total'],
                 'totalTransactions' => $transactionStats['total'],
@@ -142,7 +182,6 @@ class DashboardController extends Controller
                     ? round(($transactionStats['successful'] / $transactionStats['total']) * 100)
                     : 0,
                 'pendingTransactions' => $transactionStats['pending'],
-                'apiBalance' => $apiBalance['success'] ? ($apiBalance['data']['balance'] ?? 0) : 0,
             ],
         ]);
     }

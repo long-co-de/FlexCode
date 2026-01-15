@@ -2,20 +2,24 @@ import { Head } from '@inertiajs/react';
 import AppLayout from '@/Layouts/AppLayout';
 import { useState } from 'react';
 import PaystackWrapper from '@/Components/PaystackWrapper';
-import { 
-    CheckCircleIcon, 
-    CreditCardIcon, 
-    ShieldCheckIcon, 
+import {
+    CheckCircleIcon,
+    CreditCardIcon,
+    ShieldCheckIcon,
     ExclamationTriangleIcon,
     ArrowRightIcon,
     ArrowPathIcon,
-    BanknotesIcon
+    BanknotesIcon,
+    TrashIcon,
+    ClockIcon
 } from '@heroicons/react/24/outline';
 
 const LinkCard = ({ paystackPublicKey, userEmail, returnUrl = null }) => {
     const [isProcessing, setIsProcessing] = useState(false);
     const [error, setError] = useState('');
     const [cardDetails, setCardDetails] = useState(null);
+    const [isDeleting, setIsDeleting] = useState(false);
+    const [deleteSuccess, setDeleteSuccess] = useState(false);
 
     const handlePaystackSuccess = async (response) => {
         setIsProcessing(true);
@@ -56,10 +60,47 @@ const LinkCard = ({ paystackPublicKey, userEmail, returnUrl = null }) => {
         setError('Card linking cancelled. Please try again.');
     };
 
+    const handleDeleteExpiredCard = async () => {
+        if (!cardDetails?.id) return;
+
+        if (!window.confirm('Are you sure you want to delete this card? You will need to link a new card to continue borrowing.')) {
+            return;
+        }
+
+        setIsDeleting(true);
+        setError('');
+
+        try {
+            const result = await fetch(route('cards.delete-expired', cardDetails.id), {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]')?.content,
+                },
+            }).then(res => res.json());
+
+            if (result.success) {
+                setDeleteSuccess(true);
+                setCardDetails(null);
+                setTimeout(() => {
+                    const url = returnUrl || route('cards.link');
+                    window.location.href = url;
+                }, 2000);
+            } else {
+                setError(result.message || 'Failed to delete card.');
+                setIsDeleting(false);
+            }
+        } catch (err) {
+            console.error('Card deletion error:', err);
+            setError('An error occurred while deleting your card. Please try again.');
+            setIsDeleting(false);
+        }
+    };
+
     return (
         <AppLayout>
             <Head title="Link Payment Card — BorrowLite" />
-            
+
             <div className="min-h-screen bg-slate-50 py-16 px-4 sm:px-6 lg:px-8">
                 <div className="max-w-2xl mx-auto">
                     {cardDetails ? (
@@ -79,8 +120,9 @@ const LinkCard = ({ paystackPublicKey, userEmail, returnUrl = null }) => {
                                         {[
                                             { label: 'Card Type', value: cardDetails.card_type, icon: CreditCardIcon },
                                             { label: 'Card Number', value: `•••• •••• •••• ${cardDetails.last_four}`, icon: CreditCardIcon },
-                                            { label: 'Bank', value: cardDetails.bank, icon: BanknotesIcon }
-                                        ].map((item, i) => (
+                                            { label: 'Bank', value: cardDetails.bank, icon: BanknotesIcon },
+                                            cardDetails.expires_at && { label: 'Expires', value: new Date(cardDetails.expires_at).toLocaleDateString(), icon: ClockIcon }
+                                        ].filter(Boolean).map((item, i) => (
                                             <div key={i} className="flex justify-between items-center py-3 border-b border-slate-200/50 last:border-0">
                                                 <div className="flex items-center gap-3">
                                                     <item.icon className="w-5 h-5 text-slate-400" />
@@ -98,6 +140,45 @@ const LinkCard = ({ paystackPublicKey, userEmail, returnUrl = null }) => {
                                     </div>
                                 </div>
 
+                                {cardDetails.is_expired && (
+                                    <div className="bg-rose-50 border border-rose-200 rounded-2xl p-6 space-y-4">
+                                        <div className="flex gap-3 items-start">
+                                            <ExclamationTriangleIcon className="h-6 w-6 text-rose-500 flex-shrink-0 mt-0.5" />
+                                            <div className="flex-1">
+                                                <h4 className="text-sm font-bold text-rose-900 mb-1">Card Expired</h4>
+                                                <p className="text-sm text-rose-800 mb-4">
+                                                    Your card has expired and is no longer available for borrowing. Please delete this card and link a new one to continue.
+                                                </p>
+                                                <button
+                                                    onClick={handleDeleteExpiredCard}
+                                                    disabled={isDeleting}
+                                                    className="inline-flex items-center gap-2 px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-semibold rounded-lg transition-colors disabled:opacity-50"
+                                                >
+                                                    <TrashIcon className="w-5 h-5" />
+                                                    {isDeleting ? 'Deleting...' : 'Delete Card'}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {cardDetails.is_expiring_soon && !cardDetails.is_expired && (
+                                    <div className="bg-amber-50 border border-amber-200 rounded-2xl p-6 space-y-4">
+                                        <div className="flex gap-3 items-start">
+                                            <ClockIcon className="h-6 w-6 text-amber-500 flex-shrink-0 mt-0.5" />
+                                            <div className="flex-1">
+                                                <h4 className="text-sm font-bold text-amber-900 mb-1">Card Expiring Soon</h4>
+                                                <p className="text-sm text-amber-800 mb-2">
+                                                    Your card will expire in <span className="font-bold">{cardDetails.days_remaining} days</span>.
+                                                </p>
+                                                <p className="text-xs text-amber-700">
+                                                    We recommend linking a new card now to ensure uninterrupted borrowing access.
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
                                 <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-4 flex gap-3 items-center">
                                     <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center flex-shrink-0 shadow-sm">
                                         <ArrowPathIcon className="w-5 h-5 text-emerald-600" />
@@ -108,13 +189,25 @@ const LinkCard = ({ paystackPublicKey, userEmail, returnUrl = null }) => {
                                 </div>
 
                                 <div className="text-center space-y-4">
-                                    <div className="flex items-center justify-center gap-3 text-slate-400">
-                                        <div className="w-2 h-2 rounded-full bg-sky-500 animate-pulse" />
-                                        <p className="text-sm font-medium italic">Redirecting you back safely...</p>
-                                    </div>
-                                    <div className="flex justify-center">
-                                        <div className="w-12 h-12 border-4 border-slate-100 border-t-sky-600 rounded-full animate-spin" />
-                                    </div>
+                                    {deleteSuccess ? (
+                                        <>
+                                            <div className="flex items-center justify-center gap-3 text-emerald-600">
+                                                <CheckCircleIcon className="w-6 h-6" />
+                                                <p className="text-sm font-medium">Card deleted successfully!</p>
+                                            </div>
+                                            <p className="text-sm text-slate-600">Redirecting...</p>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <div className="flex items-center justify-center gap-3 text-slate-400">
+                                                <div className="w-2 h-2 rounded-full bg-sky-500 animate-pulse" />
+                                                <p className="text-sm font-medium italic">Redirecting you back safely...</p>
+                                            </div>
+                                            <div className="flex justify-center">
+                                                <div className="w-12 h-12 border-4 border-slate-100 border-t-sky-600 rounded-full animate-spin" />
+                                            </div>
+                                        </>
+                                    )}
                                 </div>
                             </div>
                         </div>

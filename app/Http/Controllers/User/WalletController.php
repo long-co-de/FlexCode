@@ -84,6 +84,7 @@ class WalletController extends Controller
             'walletStats' => $walletStats,
             'virtualAccounts' => $user->virtual_account_details,
             'paymentCharges' => $paymentCharges,
+            'has_card' => $user->cards()->exists(),
         ]);
     }
 
@@ -301,7 +302,23 @@ class WalletController extends Controller
                 $user = User::find($walletFunding->user_id);
                 if ($user) {
                     $netAmount = $walletFunding->amount - $fee;
-                    $user->wallet_balance += $netAmount;
+                    
+                    // Settle outstanding debts first
+                    $borrowingService = app(\App\Services\BorrowingService::class);
+                    $remainingAmount = $borrowingService->settleDebts($user, $netAmount);
+                    
+                    if ($remainingAmount < $netAmount) {
+                        $settledAmount = $netAmount - $remainingAmount;
+                        $notificationService = app(\App\Services\NotificationService::class);
+                        $notificationService->sendSystemNotification(
+                            $user,
+                            'Debt Automatically Settled',
+                            "₦{$settledAmount} has been deducted from your funding to settle your outstanding debt.",
+                            'info'
+                        );
+                    }
+                    
+                    $user->wallet_balance += $remainingAmount;
                     $user->save();
 
                     // Send notification about the fee

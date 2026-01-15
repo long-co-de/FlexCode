@@ -107,7 +107,7 @@ class BorrowingEligibilityService
     {
         $eligibility = $user->borrowingEligibility ?? $this->checkEligibility($user, $serviceType);
 
-        return [
+        $info = [
             'is_eligible' => $eligibility->isEligible(),
             'status' => $eligibility->eligibility_status,
             'credit_score' => $eligibility->credit_score,
@@ -116,5 +116,29 @@ class BorrowingEligibilityService
             'used_credit' => (float) ($eligibility->credit_limit - $eligibility->available_credit),
             'rejection_reason' => $eligibility->rejection_reason,
         ];
+
+        // Add card expiration info if applicable
+        $activeCard = $user->cards()->where('is_active', true)->first();
+        if ($activeCard) {
+            $info['card_expired'] = $activeCard->isExpired();
+            $info['card_expiring_soon'] = !$activeCard->isExpired() && $activeCard->isExpiringsoon();
+            $info['days_until_expiration'] = $activeCard->getDaysUntilExpiration();
+        }
+
+        return $info;
+    }
+
+    /**
+     * Check if user has a valid (not expired) card
+     */
+    public function hasValidCard(User $user): bool
+    {
+        $activeCard = $user->cards()->where('is_active', true)->first();
+
+        if (!$activeCard) {
+            return false;
+        }
+
+        return !$activeCard->isExpired();
     }
 }

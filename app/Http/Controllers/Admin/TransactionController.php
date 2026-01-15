@@ -21,8 +21,13 @@ class TransactionController extends Controller
         $search = $request->input('search');
         $type = $request->input('type');
         $status = $request->input('status');
+        $user_id = $request->input('user_id');
         
         $query = Transaction::with('user');
+
+        if ($user_id) {
+            $query->where('user_id', $user_id);
+        }
         
         if ($search) {
             $query->where(function ($q) use ($search) {
@@ -57,6 +62,7 @@ class TransactionController extends Controller
                 'search' => $search,
                 'type' => $type,
                 'status' => $status,
+                'user_id' => $user_id,
             ],
         ]);
     }

@@ -51,22 +51,28 @@ export default function DashboardStats({ stats }) {
         </div>
     );
 }
+function StatCard({ title, value, icon, subtitle, color }) {
+  return (
+    <div className="flex items-center gap-4 rounded-xl bg-white p-5 shadow-sm border border-gray-100 hover:shadow-md transition">
+      
+      {/* Icon */}
+      <div
+        className="flex items-center justify-center h-12 w-12 rounded-lg"
+        style={{
+          backgroundColor: `var(--color-${color}-100, #f3f4f6)`,
+        }}
+      >
+        {icon}
+      </div>
 
-function StatCard({ title, value, icon, color, subtitle }) {
-    return (
-        <div className={`dashboard-stat-card dashboard-stat-card-${color}`}>
-            <div className="flex justify-between items-start">
-                <div>
-                    <p className="text-sm font-medium igg-500">{title}</p>
-                    <p className="text-2xl font-semibold mt-1">{value}</p>
-                    {subtitle && (
-                        <p className="text-xs igg-500 mt-1">{subtitle}</p>
-                    )}
-                </div>
-                <div className="p-2 rounded-lg bg-opacity-10" style={{ backgroundColor: `var(--color-${color}-100, #f3f4f6)` }}>
-                    {icon}
-                </div>
-            </div>
-        </div>
-    );
+      {/* Content */}
+      <div className="flex-1 text-right">
+        <p className="text-sm text-gray-500 font-medium">{title}</p>
+        <p className="text-2xl font-semibold text-gray-900">{value}</p>
+        {subtitle && (
+          <p className="text-xs text-gray-400 mt-1">{subtitle}</p>
+        )}
+      </div>
+    </div>
+  );
 }

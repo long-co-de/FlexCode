@@ -232,7 +232,24 @@ class XixatPayService
         ]);
 
         // Update user's wallet balance
-        $user->wallet_balance += $settlementAmount;
+        $netAmount = $settlementAmount;
+        
+        // Settle outstanding debts first
+        $borrowingService = app(\App\Services\BorrowingService::class);
+        $remainingAmount = $borrowingService->settleDebts($user, $netAmount);
+        
+        if ($remainingAmount < $netAmount) {
+            $settledAmount = $netAmount - $remainingAmount;
+            $notificationService = app(NotificationService::class);
+            $notificationService->sendSystemNotification(
+                $user,
+                'Debt Automatically Settled',
+                "₦{$settledAmount} has been deducted from your virtual account deposit to settle your outstanding debt.",
+                'info'
+            );
+        }
+        
+        $user->wallet_balance += $remainingAmount;
         $user->save();
 
         // Send notification about the fee if needed

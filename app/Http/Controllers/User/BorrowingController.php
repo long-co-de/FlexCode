@@ -25,6 +25,26 @@ class BorrowingController extends Controller
     }
 
     /**
+     * Display borrowing dashboard/selection.
+     */
+    public function index()
+    {
+        $user = Auth::user();
+        
+        return Inertia::render('User/Borrow/Index', [
+            'eligibility' => $user->borrowingEligibility,
+            'summary' => [
+                'total_borrowed' => $user->borrowings()->sum('amount'),
+                'total_repaid' => $user->borrowings()->where('status', 'paid')->sum('amount'),
+                'active_borrowings' => $user->activeBorrowings()->count(),
+                'overdue_borrowings' => $user->overdueBorrowings()->count(),
+                'total_due' => $user->activeBorrowings()->sum('total_amount'),
+            ],
+            'has_card' => $user->cards()->exists(),
+        ]);
+    }
+
+    /**
      * Check borrowing eligibility.
      */
     public function checkEligibility()
@@ -119,6 +139,22 @@ class BorrowingController extends Controller
                 'success' => false,
                 'message' => $e->getMessage()
             ], 400);
+        }
+    }
+
+    /**
+     * Repay all borrowings from wallet.
+     */
+    public function repayAll(Request $request)
+    {
+        $user = Auth::user();
+
+        try {
+            $totalSettled = $this->borrowingService->repayFromWallet($user);
+
+            return back()->with('success', "Successfully settled debt totaling ₦" . number_format($totalSettled, 2));
+        } catch (\Exception $e) {
+            return back()->with('error', $e->getMessage());
         }
     }
 

@@ -15,7 +15,7 @@ import {
     FaBolt, FaChevronRight, FaLink
 } from 'react-icons/fa';
 
-export default function Wallet({ auth, paymentMethods, recentTransactions, walletStats, virtualAccounts, paymentCharges }) {
+export default function Wallet({ auth, paymentMethods, recentTransactions, walletStats, virtualAccounts, paymentCharges, has_card }) {
     const [showFundModal, setShowFundModal] = useState(false);
     let d = usePage().props.errors;
 
@@ -245,6 +245,12 @@ export default function Wallet({ auth, paymentMethods, recentTransactions, walle
                         <p className="text-sm font-medium text-slate-500">Manage your funds and transactions</p>
                     </div>
                     <div className="flex items-center gap-3">
+                        {has_card && (
+                            <div className="bg-emerald-50 px-3 py-1.5 rounded-xl border border-emerald-100 flex items-center gap-2 mr-2">
+                                <FaCheckCircle className="text-emerald-500 text-xs" />
+                                <span className="text-[10px] font-bold text-emerald-700 uppercase">Card Linked</span>
+                            </div>
+                        )}
                         <Link href={route('transactions')} className="flex items-center gap-2 px-3 py-2 bg-slate-100 rounded-xl text-slate-600 hover:bg-slate-200 transition-all">
                             <FaHistory className="text-sm" />
                             <span className="text-xs font-bold whitespace-nowrap">History</span>
@@ -319,6 +325,28 @@ export default function Wallet({ auth, paymentMethods, recentTransactions, walle
                                 <div className="absolute top-0 right-0 w-64 h-64 bg-sky-500/10 blur-[100px] -mr-32 -mt-32 rounded-full"></div>
                                 <div className="absolute bottom-0 left-0 w-48 h-48 bg-emerald-500/10 blur-[80px] -ml-24 -mb-24 rounded-full"></div>
                             </div>
+
+                            {/* Link Card CTA if not linked */}
+                            {!has_card && (
+                                <div className="bg-white p-6 rounded-[2rem] border-2 border-dashed border-slate-200 flex flex-col md:flex-row items-center justify-between gap-6 transition-all hover:border-sky-300 group">
+                                    <div className="flex items-center gap-5 text-center md:text-left">
+                                        <div className="w-14 h-14 rounded-2xl bg-sky-50 text-sky-500 flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform">
+                                            <FaCreditCard className="text-2xl" />
+                                        </div>
+                                        <div>
+                                            <h4 className="text-lg font-bold text-slate-800">Unlock Quick Borrowing</h4>
+                                            <p className="text-sm text-slate-500">Link your ATM card to enjoy instant credit for airtime and data.</p>
+                                        </div>
+                                    </div>
+                                    <Link
+                                        href={route('cards.index')}
+                                        className="w-full md:w-auto px-8 h-12 bg-slate-900 text-white rounded-2xl flex items-center justify-center gap-2 font-bold text-sm hover:bg-slate-800 transition-all shadow-lg shadow-slate-200"
+                                    >
+                                        <FaLink className="text-xs" />
+                                        Link Card Now
+                                    </Link>
+                                </div>
+                            )}
 
                             {/* Stats Bento Grid */}
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

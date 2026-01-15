@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Borrowing;
+use App\Models\BorrowingRepayment;
 use App\Models\BorrowSetting;
 use App\Models\Transaction;
 use App\Models\User;
@@ -16,6 +17,10 @@ class BorrowingService
 
     protected $eligibilityService;
 
+    protected $paymentService;
+
+    protected $datavendroService;
+
     public function __construct(
         PaymentService $paymentService,
         BorrowingEligibilityService $eligibilityService,
@@ -26,6 +31,146 @@ class BorrowingService
         $this->eligibilityService = $eligibilityService;
         $this->datavendroService = $datavendroService;
         $this->husmodataService = $husmodataService;
+    }
+
+    /**
+     * Settle outstanding debts from incoming funding
+     * Returns the remaining amount
+     */
+    public function settleDebts(User $user, $amount)
+    {
+        $remainingAmount = $amount;
+        $activeBorrowings = $user->borrowings()
+            ->whereIn('status', ['active', 'overdue'])
+            ->orderBy('due_date', 'asc')
+            ->get();
+
+        foreach ($activeBorrowings as $borrowing) {
+            if ($remainingAmount <= 0) {
+                break;
+            }
+
+            $amountToPay = $borrowing->total_amount;
+            
+            // If we have enough to pay the full debt
+            if ($remainingAmount >= $amountToPay) {
+                $this->payDebt($borrowing, $amountToPay, 'wallet_funding');
+                $remainingAmount -= $amountToPay;
+            } else {
+                // Partial repayment logic could be added here if desired, 
+                // but for now we'll only do full repayments or leave it for later.
+                // Given the requirement, let's at least deduct what we have if possible, 
+                // but Borrowing model doesn't seem to have 'balance' field.
+                // I'll stick to full payments to avoid complications with the current schema.
+                
+                /*
+                // If we want to support partial payments, we'd need a 'paid_amount' column in borrowings table.
+                // Since it's not there, I will just leave the debt as is if funding isn't enough for a full settle.
+                */
+            }
+        }
+
+        return $remainingAmount;
+    }
+
+    /**
+     * Repay all possible debts from wallet balance
+     */
+    public function repayFromWallet(User $user)
+    {
+        $walletBalance = $user->wallet_balance;
+        
+        if ($walletBalance <= 0) {
+            throw new \Exception('Insufficient wallet balance to perform repayment.');
+        }
+
+        $activeBorrowings = $user->borrowings()
+            ->whereIn('status', ['active', 'overdue'])
+            ->orderBy('due_date', 'asc')
+            ->get();
+
+        if ($activeBorrowings->isEmpty()) {
+            throw new \Exception('No active borrowings found to repay.');
+        }
+
+        $totalSettled = 0;
+        foreach ($activeBorrowings as $borrowing) {
+            $amountToPay = $borrowing->total_amount;
+            
+            if ($walletBalance >= $amountToPay) {
+                // Deduct from wallet
+                $user->wallet_balance -= $amountToPay;
+                $user->save();
+
+                // Process repayment
+                $this->payDebt($borrowing, $amountToPay, 'wallet');
+                
+                $walletBalance -= $amountToPay;
+                $totalSettled += $amountToPay;
+            } else {
+                // We don't support partial repayments yet based on schema
+                continue;
+            }
+        }
+
+        if ($totalSettled === 0) {
+            throw new \Exception('Wallet balance is insufficient to settle any of the active borrowings.');
+        }
+
+        return $totalSettled;
+    }
+
+    protected function payDebt(Borrowing $borrowing, $amount, $method)
+    {
+        $user = $borrowing->user;
+        $reference = 'BOR_REPAY_' . strtoupper(Str::random(10));
+
+        // Create repayment record
+        BorrowingRepayment::create([
+            'borrowing_id' => $borrowing->id,
+            'user_id' => $user->id,
+            'reference' => $reference,
+            'amount' => $amount,
+            'payment_method' => $method,
+            'status' => 'success',
+            'metadata' => [
+                'description' => 'Automatic debt settlement from wallet funding',
+                'settled_at' => now(),
+            ],
+        ]);
+
+        // Update borrowing status
+        $borrowing->status = 'paid';
+        $borrowing->repaid_at = now();
+        $borrowing->save();
+
+        // Update eligibility
+        $eligibility = $user->borrowingEligibility;
+        if ($eligibility) {
+            $eligibility->available_credit += $borrowing->amount;
+            $eligibility->save();
+        }
+
+        // Create transaction record for the repayment
+        Transaction::create([
+            'user_id' => $user->id,
+            'reference' => $reference,
+            'type' => 'borrowing_repayment',
+            'amount' => $amount,
+            'status' => 'success',
+            'recipient' => 'System',
+            'description' => "Debt settlement for {$borrowing->reference}",
+            'meta_data' => [
+                'borrowing_id' => $borrowing->id,
+                'method' => $method,
+            ],
+        ]);
+
+        Log::info('Debt settled automatically', [
+            'user_id' => $user->id,
+            'borrowing_id' => $borrowing->id,
+            'amount' => $amount,
+        ]);
     }
 
     public function borrowAirtime(User $user, $phone, $amount, $network, $duration = 7)

@@ -40,6 +40,10 @@ class AuthenticatedSessionController extends Controller
             return redirect()->route('pin.setup.show');
         }
 
+        if($user->isAdmin() ){
+            return to_route('admin.dashboard');
+        }
+
         return redirect()->intended(RouteServiceProvider::HOME);
     }
 

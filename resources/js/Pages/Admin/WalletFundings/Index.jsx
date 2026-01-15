@@ -71,8 +71,8 @@ export default function Index({ walletFundings, stats, filters, paymentMethods }
                                                 {funding.reference}
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap">
-                                                <div className="text-sm font-medium igg-900">{funding.user.name}</div>
-                                                <div className="text-sm igg-500">{funding.user.email}</div>
+                                                <div className="text-sm font-medium igg-900">{funding.user?.name}</div>
+                                                <div className="text-sm igg-500">{funding.user?.email}</div>
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm igg-500">
                                                 {(funding.amount)}

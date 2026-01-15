@@ -129,7 +129,6 @@ class CardController extends Controller
                 'message' => 'Card added and verified successfully',
                 'card' => $card
             ]);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -186,7 +185,7 @@ class CardController extends Controller
             $otherCard = $user->cards()
                 ->where('id', '!=', $card->id)
                 ->first();
-            
+
             if ($otherCard) {
                 $otherCard->is_default = true;
                 $otherCard->save();
@@ -231,7 +230,6 @@ class CardController extends Controller
                 'message' => 'Card verified successfully',
                 'data' => $verification
             ]);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -266,7 +264,6 @@ class CardController extends Controller
             );
 
             return response()->json($testResult);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -311,7 +308,6 @@ class CardController extends Controller
             );
 
             return response()->json($chargeResult);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -334,5 +330,112 @@ class CardController extends Controller
     public function testCard(Request $request)
     {
         return $this->test($request);
+    }
+
+    /**
+     * Delete a card - only allowed if card is expired or expiring soon
+     */
+    public function deleteExpiredCard(UserCard $card)
+    {
+        $user = Auth::user();
+
+        if ($card->user_id !== $user->id) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthorized'
+            ], 403);
+        }
+
+        // Check if card is actually expired or expiring soon
+        if (!$card->isExpired() && !$card->isExpiringsoon()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Card is still valid. You can only delete expired or expiring cards.'
+            ], 400);
+        }
+
+        try {
+            // Mark card as expired
+            $card->markAsExpired();
+
+            // Increase user credit score
+            $this->increaseScoreForExpiredCard($user, $card);
+
+            // If it was the default card, set another as default
+            if ($card->is_default && $user->cards()->where('id', '!=', $card->id)->exists()) {
+                $otherCard = $user->cards()
+                    ->where('id', '!=', $card->id)
+                    ->first();
+
+                if ($otherCard) {
+                    $otherCard->is_default = true;
+                    $otherCard->save();
+                }
+            }
+
+            // Delete the card
+            $card->delete();
+
+            // Recalculate borrowing eligibility
+            $this->recalculateEligibility($user);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Card deleted successfully. Your credit score has been increased.',
+                'credit_score_increase' => 5,
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error deleting card: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Increase user's credit score when card expires
+     */
+    protected function increaseScoreForExpiredCard($user, $card): void
+    {
+        try {
+            $eligibility = $user->borrowingEligibility;
+
+            if ($eligibility) {
+                $newScore = min(100, $eligibility->credit_score + 5);
+                $eligibility->update(['credit_score' => $newScore]);
+
+                \App\Models\Transaction::create([
+                    'user_id' => $user->id,
+                    'type' => 'credit_score_adjustment',
+                    'amount' => 5,
+                    'reference' => 'CARD_EXPIRED_SCORE_' . \Illuminate\Support\Str::random(8),
+                    'status' => 'success',
+                    'description' => 'Credit score increased due to card expiration',
+                    'metadata' => [
+                        'card_last_four' => $card->last_four,
+                        'reason' => 'card_expired',
+                    ],
+                ]);
+            }
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Error increasing credit score', [
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Recalculate borrowing eligibility
+     */
+    protected function recalculateEligibility($user): void
+    {
+        try {
+            $eligibilityService = app(\App\Services\BorrowingEligibilityService::class);
+            $eligibilityService->checkEligibility($user);
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Error recalculating eligibility', [
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 }

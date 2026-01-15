@@ -109,25 +109,25 @@ export default function ReferralIndex({ referralStats, referredUsers, referralEa
                         </h3>
 
                         <div className="space-y-4 mb-6">
-                            {/* Link Input */}
+                            {/* Code Input */}
                             <div>
-                                <label className="block text-sm font-bold text-base-content mb-2">Your Referral Link</label>
+                                <label className="block text-sm font-bold text-base-content mb-2">Your Referral Code</label>
                                 <div className="flex gap-2">
                                     <input
                                         type="text"
-                                        value={referralUrl}
+                                        value={referralStats.referral_code}
                                         readOnly
                                         className="flex-1 px-4 py-3 rounded-xl border border-base-300 bg-base-100 text-sm font-mono"
                                     />
                                     <button
-                                        onClick={() => copyToClipboard(referralUrl, 'url')}
+                                        onClick={() => copyToClipboard(referralStats.referral_code, 'code')}
                                         className={`px-4 py-3 rounded-xl font-bold text-sm transition-all ${
-                                            copiedUrl
+                                            copiedCode
                                                 ? 'bg-success text-success-content'
                                                 : 'bg-primary text-primary-content hover:bg-primary-focus'
                                         }`}
                                     >
-                                        {copiedUrl ? 'Copied!' : 'Copy Link'}
+                                        {copiedCode ? 'Copied!' : 'Copy Code'}
                                     </button>
                                 </div>
                             </div>

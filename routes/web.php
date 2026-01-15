@@ -284,6 +284,13 @@ Route::middleware(['auth', 'verified', \App\Http\Middleware\CheckActive::class])
             Route::get('/transactions/{transaction}', [AdminTransactionController::class, 'show'])->name('transactions.show');
             Route::post('/transactions/{transaction}/update-status', [AdminTransactionController::class, 'updateStatus'])->name('transactions.update-status');
 
+            // Feedback Management
+            Route::get('/feedback', [\App\Http\Controllers\Admin\FeedbackController::class, 'index'])->name('feedback.index');
+            Route::get('/feedback/{feedback}', [\App\Http\Controllers\Admin\FeedbackController::class, 'show'])->name('feedback.show');
+            Route::patch('/feedback/{feedback}/status', [\App\Http\Controllers\Admin\FeedbackController::class, 'updateStatus'])->name('feedback.update-status');
+            Route::post('/feedback/{feedback}/respond', [\App\Http\Controllers\Admin\FeedbackController::class, 'respond'])->name('feedback.respond');
+            Route::get('/feedback/statistics', [\App\Http\Controllers\Admin\FeedbackController::class, 'statistics'])->name('feedback.statistics');
+
             // Coupons Management
             Route::get('/coupons', [\App\Http\Controllers\Admin\CouponController::class, 'index'])->name('coupons.index');
             Route::get('/coupons/create', [\App\Http\Controllers\Admin\CouponController::class, 'create'])->name('coupons.create');

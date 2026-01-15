@@ -2,11 +2,13 @@ import { Head, Link, usePage, router } from '@inertiajs/react';
 import { useState, useEffect } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
 import PinVerification from '@/Pages/User/PinVerification';
+import FeedbackModal from '@/Components/FeedbackModal';
 import {
     FaWallet, FaCheckCircle, FaExclamationTriangle, FaClock,
     FaHistory, FaChartLine, FaShieldAlt, FaArrowRight,
     FaInfoCircle, FaRegCreditCard, FaCoins, FaPhone, FaWifi,
-    FaLightbulb, FaTv, FaMoneyBillWave, FaPlus, FaCreditCard, FaLock
+    FaLightbulb, FaTv, FaMoneyBillWave, FaPlus, FaCreditCard, FaLock,
+    FaComment, FaSearch
 } from 'react-icons/fa';
 import { GiReceiveMoney, GiPayMoney } from 'react-icons/gi';
 
@@ -15,6 +17,7 @@ export default function Dashboard({ auth, transactionStats, recentTransactions, 
     const [showPinVerification, setShowPinVerification] = useState(false);
     const [isRepaying, setIsRepaying] = useState(false);
     const [copiedCode, setCopiedCode] = useState(false);
+    const [showFeedbackModal, setShowFeedbackModal] = useState(false);
 
     const handleRepayAll = () => {
         if (confirm('Are you sure you want to repay your outstanding debt? Your linked card will be charged, or wallet balance used if card is not available.')) {
@@ -33,9 +36,7 @@ export default function Dashboard({ auth, transactionStats, recentTransactions, 
 
     const copyReferralCode = () => {
         if (referralStats?.referral_code) {
-            const baseUrl = window.location.origin;
-            const referralLink = `${baseUrl}/?code=${referralStats.referral_code}`;
-            navigator.clipboard.writeText(referralLink);
+            navigator.clipboard.writeText(referralStats.referral_code);
             setCopiedCode(true);
             setTimeout(() => setCopiedCode(false), 2000);
         }
@@ -195,7 +196,7 @@ export default function Dashboard({ auth, transactionStats, recentTransactions, 
                                                     : 'bg-primary/20 text-primary hover:bg-primary/30'
                                             }`}
                                         >
-                                            {copiedCode ? '✓ Copied!' : 'Copy Link'}
+                                            {copiedCode ? '✓ Copied!' : 'Copy Code'}
                                         </button>
                                     </div>
                                     <Link
@@ -307,6 +308,55 @@ export default function Dashboard({ auth, transactionStats, recentTransactions, 
                 )}
 
                 {/* Recent Transactions */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                    {/* Feedback Widget */}
+                    <div className="bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-950/30 dark:to-pink-950/30 rounded-3xl p-6 border border-purple-200 dark:border-purple-800 hover:shadow-lg transition-all">
+                        <div className="flex items-start justify-between mb-4">
+                            <div className="flex items-center gap-3">
+                                <div className="w-12 h-12 bg-purple-500/20 rounded-2xl flex items-center justify-center">
+                                    <FaComment className="text-purple-600 text-lg" />
+                                </div>
+                                <div>
+                                    <h3 className="font-bold text-base-content">Send Feedback</h3>
+                                    <p className="text-xs text-base-content/60">Help us improve</p>
+                                </div>
+                            </div>
+                        </div>
+                        <p className="text-sm text-base-content/70 mb-4">Tell us what you think! Share bug reports, feature requests, or general feedback to help us build a better platform.</p>
+                        <button
+                            onClick={() => setShowFeedbackModal(true)}
+                            className="w-full py-2.5 bg-purple-500 hover:bg-purple-600 text-white font-bold rounded-xl transition-all active:scale-95 flex items-center justify-center gap-2"
+                        >
+                            <FaComment className="text-sm" />
+                            Give Feedback
+                        </button>
+                    </div>
+
+                    {/* Payment Retrieval Widget */}
+                    <div className="bg-gradient-to-br from-cyan-50 to-blue-50 dark:from-cyan-950/30 dark:to-blue-950/30 rounded-3xl p-6 border border-cyan-200 dark:border-cyan-800 hover:shadow-lg transition-all">
+                        <div className="flex items-start justify-between mb-4">
+                            <div className="flex items-center gap-3">
+                                <div className="w-12 h-12 bg-cyan-500/20 rounded-2xl flex items-center justify-center">
+                                    <FaSearch className="text-cyan-600 text-lg" />
+                                </div>
+                                <div>
+                                    <h3 className="font-bold text-base-content">Retrieve Payment</h3>
+                                    <p className="text-xs text-base-content/60">Verify with Paystack</p>
+                                </div>
+                            </div>
+                        </div>
+                        <p className="text-sm text-base-content/70 mb-4">Didn't receive credit for a payment? Enter your Paystack reference here and we'll verify and credit it immediately.</p>
+                        <Link
+                            href={route('payment-retrieval.show')}
+                            className="w-full py-2.5 bg-cyan-500 hover:bg-cyan-600 text-white font-bold rounded-xl transition-all active:scale-95 flex items-center justify-center gap-2 text-center"
+                        >
+                            <FaSearch className="text-sm" />
+                            Retrieve Payment
+                        </Link>
+                    </div>
+                </div>
+
+                {/* Recent Transactions */}
                 <div className="bg-base-100 rounded-[2.5rem] shadow-sm border border-base-300 overflow-hidden">
                     <div className="px-8 py-6 border-b border-base-300 flex items-center justify-between">
                         <h3 className="text-lg font-bold text-base-content">Recent Activity</h3>
@@ -351,6 +401,8 @@ export default function Dashboard({ auth, transactionStats, recentTransactions, 
                         )}
                     </div>
                 </div>
+
+                <FeedbackModal isOpen={showFeedbackModal} onClose={() => setShowFeedbackModal(false)} />
             </div>
         </AppLayout>
     );

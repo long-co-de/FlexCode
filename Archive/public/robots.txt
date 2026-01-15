@@ -1,8 +1,0 @@
- User-agent: *
-Disallow: /database
-Disallow: /storage
-Disallow: /vendor
-Disallow: /server-status
-# leave JS/CSS/fonts crawlable for proper rendering
-
-Sitemap: https://paylow.com.ng/sitemap.xml

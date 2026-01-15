@@ -10,12 +10,20 @@ export default function Register() {
     const { data, setData, post, processing, errors, reset } = useForm({
         name: '',
         email: '',
+        phone_number: '',
         password: '',
         password_confirmation: '',
         referral_code: '',
     });
 
     useEffect(() => {
+        // Auto-populate referral code from URL query parameter
+        const params = new URLSearchParams(window.location.search);
+        const codeFromUrl = params.get('code');
+        if (codeFromUrl) {
+            setData('referral_code', codeFromUrl);
+        }
+        
         return () => {
             reset('password', 'password_confirmation');
         };
@@ -117,6 +125,34 @@ export default function Register() {
                                 />
                             </div>
                             <InputError message={errors.email} className="text-sm" />
+                        </div>
+
+                        {/* Phone Number */}
+                        <div className="space-y-2">
+                            <InputLabel 
+                                htmlFor="phone_number" 
+                                value="Phone Number" 
+                                className="text-sm font-medium text-gray-700 dark:text-gray-300"
+                            />
+                            <div className="relative">
+                                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                    <svg className="h-5 w-5 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 00.948.684l1.498 7.492a1 1 0 00.502.756l2.048 1.029a11.042 11.042 0 01-7.422 3.756c-.138.371-.645 2.428.705 4.05A13.998 13.998 0 0019 15a4 4 0 00-4-4h-5.5a4 4 0 00-4 4v4a2 2 0 01-2-2V5z" />
+                                    </svg>
+                                </div>
+                                <TextInput
+                                    id="phone_number"
+                                    type="tel"
+                                    name="phone_number"
+                                    value={data.phone_number || ''}
+                                    className="pl-10 block w-full rounded-xl border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-sky-500 dark:focus:border-sky-400 focus:ring-sky-500 dark:focus:ring-sky-400 transition-colors"
+                                    autoComplete="tel"
+                                    placeholder="e.g., +2348012345678"
+                                    onChange={(e) => setData('phone_number', e.target.value)}
+                                    required
+                                />
+                            </div>
+                            <InputError message={errors.phone_number} className="text-sm" />
                         </div>
 
                         {/* Password - Fixed ID */}

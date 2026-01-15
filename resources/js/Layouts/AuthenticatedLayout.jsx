@@ -126,7 +126,7 @@ export default function Authenticated({ user, header, children }) {
                             {/* Logo */}
                             <div className="flex-shrink-0 flex items-center ml-2 md:ml-0">
                                 <Link href={route("dashboard")}>
-                                    <ApplicationLogo className="block h-9 w-auto fill-current igg-800" />
+                                    <ApplicationLogo className="block h-9 w-auto fill-current igg-800 dark:bg-white rounded-full" />
                                 </Link>
                             </div>
                         </div>

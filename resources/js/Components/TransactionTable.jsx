@@ -1,7 +1,7 @@
 import { Link } from '@inertiajs/react';
 import { format } from 'date-fns';
 
-export default function TransactionTable({ transactions }) {
+export default function TransactionTable({ transactions, viewRoute = 'transactions.show' }) {
     return (
         <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
@@ -53,7 +53,7 @@ export default function TransactionTable({ transactions }) {
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                                     <Link 
-                                        href={route('transactions.show', transaction.id)} 
+                                        href={route(viewRoute, transaction.id)} 
                                         className="text-primary-600 hover:text-primary-900 mr-3"
                                     >
                                         View

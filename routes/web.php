@@ -11,6 +11,7 @@ use App\Http\Controllers\User\CableController;
 use App\Http\Controllers\User\CouponController;
 use App\Http\Controllers\User\ElectricityController;
 use App\Http\Controllers\User\WalletController;
+use App\Http\Controllers\User\ReferralController;
 use App\Http\Controllers\User\TransactionController;
 use App\Http\Controllers\User\BeneficiaryController;
 use App\Http\Controllers\WebhookController;
@@ -36,14 +37,9 @@ use App\Http\Controllers\User\BorrowingController;
 */
 
 Route::get('/', function () {
-    $userAgentsComparisims = ['webview', 'android', 'iphone'];
-    $requestuserAgent = request()->userAgent();
-    $isMobile = false;
-    foreach ($userAgentsComparisims as $agent) {
-        if (str_contains(strtolower($requestuserAgent), $agent)) {
-            $isMobile = true;
-        }
-    }
+    $userAgent = strtolower(request()->userAgent() ?? '');
+    $isMobile = \Illuminate\Support\Str::contains($userAgent, ['webview', 'android', 'iphone', 'ipad', 'ipod', 'mobile', 'wv']);
+
     if ($isMobile) {
         return Inertia::render('WebviewWelcome');
     }
@@ -66,6 +62,7 @@ use App\Http\Controllers\User\BorrowingElectricityController;
 use App\Http\Controllers\User\CardController;
 use App\Models\Beneficiary;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
+use Illuminate\Support\Facades\Artisan;
 
 // About and Contact pages
 Route::get('/about', [AboutController::class, 'index'])->name('about');
@@ -137,7 +134,7 @@ Route::middleware(['auth', 'verified', \App\Http\Middleware\CheckActive::class])
         Route::post('/notifications/test', [App\Http\Controllers\NotificationController::class, 'sendTestNotification'])->name('notifications.test');
 
         // Routes that require PIN verification
-        Route::middleware([\App\Http\Middleware\VerifyPin::class])->group(function () {
+        Route::middleware([])->group(function () {
             // Bills Payment Hub
             Route::get('/bills', function () {
                 return Inertia::render('User/Bills');
@@ -172,6 +169,11 @@ Route::middleware(['auth', 'verified', \App\Http\Middleware\CheckActive::class])
             Route::post('/wallet/transfer', [WalletController::class, 'transfer'])->name('wallet.transfer');
             Route::post('/wallet/withdraw', [WalletController::class, 'withdraw'])->name('wallet.withdraw');
             Route::get('/wallet/history', [WalletController::class, 'history'])->name('wallet.history');
+
+            // Referral Program
+            Route::get('/referral', [ReferralController::class, 'index'])->name('referral.index');
+            Route::post('/referral/share-whatsapp', [ReferralController::class, 'shareWhatsapp'])->name('referral.share-whatsapp');
+            Route::get('/referral/link', [ReferralController::class, 'getLink'])->name('referral.link');
 
             // Coupons
             Route::post('/coupons/redeem', [CouponController::class, 'redeem'])->name('coupons.redeem');
@@ -210,6 +212,36 @@ Route::middleware(['auth', 'verified', \App\Http\Middleware\CheckActive::class])
             Route::get('/messages/conversation/{conversation}', [App\Http\Controllers\Agent\MessageController::class, 'showConversation'])->name('messages.conversation');
             Route::post('/messages/send', [App\Http\Controllers\Agent\MessageController::class, 'sendMessage'])->name('messages.send');
             Route::post('/messages/conversation/{conversation}/close', [App\Http\Controllers\Agent\MessageController::class, 'closeConversation'])->name('messages.close');
+
+            // Agent Users Management
+            Route::get('/users', [App\Http\Controllers\Agent\UserController::class, 'index'])->name('users');
+            Route::get('/users/{user}', [App\Http\Controllers\Agent\UserController::class, 'show'])->name('users.show');
+            Route::patch('/users/{user}/toggle-active', [App\Http\Controllers\Agent\UserController::class, 'toggleActive'])->name('users.toggle-active');
+
+            // Agent Borrowings Management
+            Route::get('/borrowings', [App\Http\Controllers\Agent\BorrowingController::class, 'index'])->name('borrowings.index');
+            Route::get('/borrowings/{borrowing}', [App\Http\Controllers\Agent\BorrowingController::class, 'show'])->name('borrowings.show');
+            Route::post('/borrowings/{borrowing}/approve', [App\Http\Controllers\Agent\BorrowingController::class, 'approve'])->name('borrowings.approve');
+            Route::post('/borrowings/{borrowing}/reject', [App\Http\Controllers\Agent\BorrowingController::class, 'reject'])->name('borrowings.reject');
+            Route::post('/borrowings/{borrowing}/mark-paid', [App\Http\Controllers\Agent\BorrowingController::class, 'markPaid'])->name('borrowings.mark-paid');
+
+            // Agent Data Plans Management
+            Route::get('/data-plans', [App\Http\Controllers\Agent\DataPlanController::class, 'index'])->name('data-plans');
+            Route::post('/data-plans/{dataPlan}/toggle', [App\Http\Controllers\Agent\DataPlanController::class, 'toggle'])->name('data-plans.toggle');
+
+            // Agent Wallet Fundings Management
+            Route::get('/wallet-fundings', [App\Http\Controllers\Agent\WalletFundingController::class, 'index'])->name('wallet-fundings');
+            Route::get('/wallet-fundings/{funding}', [App\Http\Controllers\Agent\WalletFundingController::class, 'show'])->name('wallet-fundings.show');
+            Route::post('/wallet-fundings/{funding}/approve', [App\Http\Controllers\Agent\WalletFundingController::class, 'approve'])->name('wallet-fundings.approve');
+            Route::post('/wallet-fundings/{funding}/reject', [App\Http\Controllers\Agent\WalletFundingController::class, 'reject'])->name('wallet-fundings.reject');
+
+            // Agent Settings
+            Route::get('/settings', [App\Http\Controllers\Agent\SettingsController::class, 'index'])->name('settings');
+            Route::post('/settings', [App\Http\Controllers\Agent\SettingsController::class, 'update'])->name('settings.update');
+
+            // Agent Notifications
+            Route::get('/notifications', [App\Http\Controllers\Agent\NotificationController::class, 'index'])->name('notifications.index');
+            Route::post('/notifications/send', [App\Http\Controllers\Agent\NotificationController::class, 'send'])->name('notifications.send');
         });
     });
 
@@ -331,6 +363,15 @@ Route::middleware(['auth', 'verified', \App\Http\Middleware\CheckActive::class])
             // Borrow Settings Management
             Route::resource('borrow-settings', \App\Http\Controllers\Admin\BorrowSettingController::class)->names('borrow-settings');
 
+            // Borrowings Management
+            Route::prefix('borrowings')->name('borrowings.')->group(function () {
+                Route::get('/', [\App\Http\Controllers\Admin\BorrowingController::class, 'index'])->name('index');
+                Route::get('/{borrowing}', [\App\Http\Controllers\Admin\BorrowingController::class, 'show'])->name('show');
+                Route::post('/{borrowing}/trigger-repayment', [\App\Http\Controllers\Admin\BorrowingController::class, 'triggerRepayment'])->name('trigger-repayment');
+                Route::post('/{borrowing}/mark-as-paid', [\App\Http\Controllers\Admin\BorrowingController::class, 'markAsPaid'])->name('mark-as-paid');
+                Route::post('/{borrowing}/cancel', [\App\Http\Controllers\Admin\BorrowingController::class, 'cancel'])->name('cancel');
+            });
+
             // Credit Eligibility Settings Management
             Route::resource('credit-eligibility-settings', \App\Http\Controllers\Admin\CreditEligibilitySettingController::class)->names('credit-eligibility-settings');
 
@@ -384,6 +425,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/', [CardController::class, 'store'])->name('store');
         Route::post('/{card}/set-default', [CardController::class, 'setDefault'])->name('set-default');
         Route::delete('/{card}', [CardController::class, 'destroy'])->name('destroy');
+        Route::delete('/{card}/expired', [CardController::class, 'deleteExpiredCard'])->name('delete-expired');
         Route::post('/{card}/verify', [CardController::class, 'verify'])->name('verify');
         Route::post('/test', [CardController::class, 'test'])->name('test');
         Route::post('/charge', [CardController::class, 'charge'])->name('charge');
@@ -400,6 +442,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     // Borrowing routes
     Route::prefix('borrow')->name('borrow.')->group(function () {
+        Route::get('/', [BorrowingController::class, 'index'])->name('index');
         // Data borrowing
         Route::get('/data', [BorrowingDataController::class, 'index'])->name('data');
         Route::post('/data', [BorrowingDataController::class, 'borrow'])->name('data.process');
@@ -418,6 +461,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
         // Borrowing management
         Route::get('/my-borrowings', [BorrowingController::class, 'myBorrowings'])->name('my-borrowings');
+        Route::post('/repay-all', [BorrowingController::class, 'repayAll'])->name('repay-all');
         Route::post('/{borrowing}/repay', [BorrowingController::class, 'repay'])->name('repay');
         Route::get('/{borrowing}/details', [BorrowingController::class, 'show'])->name('show');
     });
@@ -426,7 +470,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 // API routes for React frontend
 Route::middleware(['auth:sanctum'])->prefix('api')->group(function () {
     Route::get('/user/profile', function () {
-        return response()->json(auth()->user());
+        return response()->json(auth('sanctum')->user());
     });
 
     Route::prefix('cards')->group(function () {
@@ -448,6 +492,11 @@ Route::middleware(['auth:sanctum'])->prefix('api')->group(function () {
 
 // Borrowing eligibility check
 Route::get('/check-borrowing-eligibility', [BorrowingController::class, 'checkEligibility'])->name('borrowing.check-eligibility');
-
+// utility routes  for shared hosting
+// migrate-routes
+Route::get('/migrate', function () {
+    Artisan::call('migrate');
+    return 'Migration complete';
+});
 
 require __DIR__ . '/auth.php';

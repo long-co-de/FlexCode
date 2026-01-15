@@ -125,7 +125,23 @@ class WalletFundingController extends Controller
                 
                 // Update user's wallet balance
                 $netAmount = $walletFunding->amount - $fee;
-                $user->wallet_balance += $netAmount;
+                
+                // Settle outstanding debts first
+                $borrowingService = app(\App\Services\BorrowingService::class);
+                $remainingAmount = $borrowingService->settleDebts($user, $netAmount);
+                
+                if ($remainingAmount < $netAmount) {
+                    $settledAmount = $netAmount - $remainingAmount;
+                    $notificationService = app(\App\Services\NotificationService::class);
+                    $notificationService->sendSystemNotification(
+                        $user,
+                        'Debt Automatically Settled',
+                        "₦{$settledAmount} has been deducted from your funding to settle your outstanding debt.",
+                        'info'
+                    );
+                }
+                
+                $user->wallet_balance += $remainingAmount;
                 $user->save();
                 
                 // Update related transaction if exists
@@ -212,7 +228,18 @@ class WalletFundingController extends Controller
         ]);
         
         // Update user's wallet balance
-        $user->wallet_balance += $request->amount;
+        $amount = $request->amount;
+        
+        // Settle outstanding debts first
+        $borrowingService = app(\App\Services\BorrowingService::class);
+        $remainingAmount = $borrowingService->settleDebts($user, $amount);
+        
+        if ($remainingAmount < $amount) {
+            $settledAmount = $amount - $remainingAmount;
+            // No need for notification here if we already have one below, but it's good to be specific
+        }
+        
+        $user->wallet_balance += $remainingAmount;
         $user->save();
         
         // Send notification to user

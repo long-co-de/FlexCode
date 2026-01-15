@@ -4,6 +4,7 @@ namespace App\Http\Controllers\User;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
 use App\Models\Transaction;
 use App\Models\User;
@@ -26,7 +27,7 @@ class WalletController extends Controller
      */
     public function index()
     {
-        $user = auth()->user();
+        $user = Auth::user();
         // Get all active payment methods
         $allPaymentMethods = PaymentMethod::where('is_active', true)->get();
 
@@ -84,6 +85,7 @@ class WalletController extends Controller
             'walletStats' => $walletStats,
             'virtualAccounts' => $user->virtual_account_details,
             'paymentCharges' => $paymentCharges,
+            'has_card' => $user->cards()->exists(),
         ]);
     }
 
@@ -301,7 +303,23 @@ class WalletController extends Controller
                 $user = User::find($walletFunding->user_id);
                 if ($user) {
                     $netAmount = $walletFunding->amount - $fee;
-                    $user->wallet_balance += $netAmount;
+                    
+                    // Settle outstanding debts first
+                    $borrowingService = app(\App\Services\BorrowingService::class);
+                    $remainingAmount = $borrowingService->settleDebts($user, $netAmount);
+                    
+                    if ($remainingAmount < $netAmount) {
+                        $settledAmount = $netAmount - $remainingAmount;
+                        $notificationService = app(\App\Services\NotificationService::class);
+                        $notificationService->sendSystemNotification(
+                            $user,
+                            'Debt Automatically Settled',
+                            "₦{$settledAmount} has been deducted from your funding to settle your outstanding debt.",
+                            'info'
+                        );
+                    }
+                    
+                    $user->wallet_balance += $remainingAmount;
                     $user->save();
 
                     // Send notification about the fee
@@ -313,6 +331,21 @@ class WalletController extends Controller
                             "A service fee of ₦{$fee} ({$chargePercentage}%) has been deducted from your wallet funding of ₦{$walletFunding->amount}. Net amount credited: ₦{$netAmount}.",
                             'info'
                         );
+                    }
+
+                    // Process referral bonus (4% for referrer on referred user's first deposit)
+                    $referralService = app(\App\Services\ReferralService::class);
+                    if ($referralService->processReferralBonus($transaction)) {
+                        $referrer = User::find($user->referred_by);
+                        if ($referrer) {
+                            $notificationService = app(\App\Services\NotificationService::class);
+                            $notificationService->sendSystemNotification(
+                                $referrer,
+                                'Referral Bonus Earned',
+                                "You earned ₦{$referralService->getBonusAmount($transaction->amount)} (4% commission) from {$user->name}'s first deposit.",
+                                'success'
+                            );
+                        }
                     }
                 }
 

@@ -34,10 +34,19 @@ class AuthenticatedSessionController extends Controller
 
         $request->session()->regenerate();
 
+        // Set remember me to 30 days if checkbox is checked
+        if ($request->filled('remember')) {
+            $request->session()->put('expires', now()->addDays(30)->getTimestamp());
+        }
+
         // Check if user has set a PIN
         $user = $request->user();
         if (!$user->isAdmin() && !$user->pin) {
             return redirect()->route('pin.setup.show');
+        }
+
+        if($user->isAdmin() ){
+            return to_route('admin.dashboard');
         }
 
         return redirect()->intended(RouteServiceProvider::HOME);

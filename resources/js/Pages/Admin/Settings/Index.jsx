@@ -5,8 +5,7 @@ import InputError from '@/Components/InputError';
 import InputLabel from '@/Components/InputLabel';
 import TextInput from '@/Components/TextInput';
 import Button from '@/Components/Button';
-import ApiDetailsWidget from '@/Components/ApiDetailsWidget';
-import { Cog6ToothIcon, KeyIcon, PhoneIcon, TvIcon, LightBulbIcon, WalletIcon } from '@heroicons/react/24/outline';
+import { Cog6ToothIcon, PhoneIcon, TvIcon, LightBulbIcon, WalletIcon } from '@heroicons/react/24/outline';
 function PercentIcon(props) {
     return (
         <svg
@@ -21,7 +20,7 @@ function PercentIcon(props) {
         </svg>
     );
 }
-export default function Settings({ auth, settings, apiDetails }) {
+export default function Settings({ auth, settings }) {
     const [activeTab, setActiveTab] = useState('general');
 
     const { data, setData, post, processing, errors, reset } = useForm({
@@ -29,18 +28,6 @@ export default function Settings({ auth, settings, apiDetails }) {
         site_description: settings.site_description || 'Buy airtime, data, cable TV subscriptions, and pay electricity bills',
         contact_email: settings.contact_email || 'support@vtuapp.com',
         contact_phone: settings.contact_phone || '',
-        husmodata_api_key: settings.husmodata_api_key || '',
-        husmodata_api_url: settings.husmodata_api_url || 'https://api.husmodata.com/v1',
-        datavendro_api_key: settings.datavendro_api_key || '',
-        datavendro_api_url: settings.datavendro_api_url || 'https://datavendor.ng/api',
-        // xixapay_api_key: settings.xixapay_api_key || '',
-        // xixapay_secret_key: settings.xixapay_secret_key || '',
-        // xixapay_base_url: settings.xixapay_base_url || 'https://api.xixapay.com/api/v1',
-        // xixapay_business_id: settings.xixapay_business_id || '',
-        xixapay_api_key: settings.xixapay_api_key || '',
-        xixapay_secret_key: settings.xixapay_secret_key || '',
-        xixapay_base_url: settings.xixapay_base_url || 'https://api.xixapay.com/api/v1',
-        xixapay_business_id: settings.xixapay_business_id || '',
         airtime_profit_percentage: settings.airtime_profit_percentage || '2',
         data_profit_percentage: settings.data_profit_percentage || '5',
         cable_profit_percentage: settings.cable_profit_percentage || '3',
@@ -52,7 +39,7 @@ export default function Settings({ auth, settings, apiDetails }) {
         referral_bonus_percentage: settings.referral_bonus_percentage || '1',
         min_withdrawal_amount: settings.min_withdrawal_amount || '1000',
         maintenance_mode: settings.maintenance_mode === 'true' ? true : false,
-        about_content: settings.about_content || '' ,
+        about_content: settings.about_content || '',
     });
 
     const handleSubmit = (e) => {
@@ -81,8 +68,8 @@ export default function Settings({ auth, settings, apiDetails }) {
                                                 <button
                                                     onClick={() => setActiveTab('general')}
                                                     className={`flex items-center w-full p-2 rounded-md ${activeTab === 'general'
-                                                            ? 'bg-primary-100 text-primary-700'
-                                                            : 'hover:bg-base-200 mm--100'
+                                                        ? 'bg-primary-100 text-primary-700'
+                                                        : 'hover:bg-base-200 mm--100'
                                                         }`}
                                                 >
                                                     <Cog6ToothIcon className="h-5 w-5 mr-2" />
@@ -93,8 +80,8 @@ export default function Settings({ auth, settings, apiDetails }) {
                                                 <button
                                                     onClick={() => setActiveTab('about')}
                                                     className={`flex items-center w-full p-2 rounded-md ${activeTab === 'about'
-                                                            ? 'bg-primary-100 text-primary-700'
-                                                            : 'hover:bg-base-200 mm--100'
+                                                        ? 'bg-primary-100 text-primary-700'
+                                                        : 'hover:bg-base-200 mm--100'
                                                         }`}
                                                 >
                                                     <LightBulbIcon className="h-5 w-5 mr-2" />
@@ -103,22 +90,10 @@ export default function Settings({ auth, settings, apiDetails }) {
                                             </li>
                                             <li>
                                                 <button
-                                                    onClick={() => setActiveTab('api')}
-                                                    className={`flex items-center w-full p-2 rounded-md ${activeTab === 'api'
-                                                            ? 'bg-primary-100 text-primary-700'
-                                                            : 'hover:bg-base-200 mm--100'
-                                                        }`}
-                                                >
-                                                    <KeyIcon className="h-5 w-5 mr-2" />
-                                                    API Settings
-                                                </button>
-                                            </li>
-                                            <li>
-                                                <button
                                                     onClick={() => setActiveTab('profit')}
                                                     className={`flex items-center w-full p-2 rounded-md ${activeTab === 'profit'
-                                                            ? 'bg-primary-100 text-primary-700'
-                                                            : 'hover:bg-base-200 mm--100'
+                                                        ? 'bg-primary-100 text-primary-700'
+                                                        : 'hover:bg-base-200 mm--100'
                                                         }`}
                                                 >
                                                     <PercentIcon className="h-5 w-5 mr-2" />
@@ -129,8 +104,8 @@ export default function Settings({ auth, settings, apiDetails }) {
                                                 <button
                                                     onClick={() => setActiveTab('payment')}
                                                     className={`flex items-center w-full p-2 rounded-md ${activeTab === 'payment'
-                                                            ? 'bg-primary-100 text-primary-700'
-                                                            : 'hover:bg-base-200 mm--100'
+                                                        ? 'bg-primary-100 text-primary-700'
+                                                        : 'hover:bg-base-200 mm--100'
                                                         }`}
                                                 >
                                                     <WalletIcon className="h-5 w-5 mr-2" />
@@ -141,8 +116,8 @@ export default function Settings({ auth, settings, apiDetails }) {
                                                 <button
                                                     onClick={() => setActiveTab('referral')}
                                                     className={`flex items-center w-full p-2 rounded-md ${activeTab === 'referral'
-                                                            ? 'bg-primary-100 text-primary-700'
-                                                            : 'hover:bg-base-200 mm--100'
+                                                        ? 'bg-primary-100 text-primary-700'
+                                                        : 'hover:bg-base-200 mm--100'
                                                         }`}
                                                 >
                                                     <WalletIcon className="h-5 w-5 mr-2" />
@@ -247,134 +222,6 @@ export default function Settings({ auth, settings, apiDetails }) {
                                                         onChange={(e) => setData('about_content', e.target.value)}
                                                     />
                                                     <InputError message={errors.about_content} className="mt-2" />
-                                                </div>
-                                            </div>
-                                        )}
-
-                                        {/* API Settings */}
-                                        {activeTab === 'api' && (
-                                            <div>
-                                                <h3 className="text-lg font-medium iggyy-updatey-900 mb-4">API Settings</h3>
-
-                                                <div className="mb-6">
-                                                    <h4 className="text-md font-medium iggyy-updatey-700 mb-2">Datavendro API Configuration</h4>
-                                                    <p className="text-sm iggyy-updatey-500 mb-4">
-                                                        Configure your Datavendro API settings for airtime and data services.
-                                                    </p>
-
-                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                                        <div>
-                                                            <InputLabel htmlFor="datavendro_api_key" value="Datavendro API Key" />
-                                                            <TextInput
-                                                                id="datavendro_api_key"
-                                                                type="text"
-                                                                className="mt-1 block w-full"
-                                                                value={data.datavendro_api_key}
-                                                                onChange={(e) => setData('datavendro_api_key', e.target.value)}
-                                                                required
-                                                            />
-                                                            <InputError message={errors.datavendro_api_key} className="mt-2" />
-                                                        </div>
-
-                                                        <div>
-                                                            <InputLabel htmlFor="datavendro_api_url" value="Datavendro API URL" />
-                                                            <TextInput
-                                                                id="datavendro_api_url"
-                                                                type="text"
-                                                                className="mt-1 block w-full"
-                                                                value={data.datavendro_api_url}
-                                                                onChange={(e) => setData('datavendro_api_url', e.target.value)}
-                                                                required
-                                                            />
-                                                            <InputError message={errors.datavendro_api_url} className="mt-2" />
-                                                        </div>
-                                                    </div>
-                                                </div>
-
-                                                {/* XixaPay API Configuration */}
-                                                <div className="mb-6 mt-8 pt-6 border-t border-gray-200">
-                                                    <h4 className="text-md font-medium iggyy-updatey-700 mb-2">XixaPay API Configuration</h4>
-                                                    <p className="text-sm iggyy-updatey-500 mb-4">
-                                                        Configure your XixaPay API settings for virtual account services.
-                                                    </p>
-
-                                                    <div className="grid grid-cols-1 md gap-6">
-                                                        <div>
-                                                            <InputLabel htmlFor="xixapay_api_key" value="XixaPay API Key" />
-                                                            <TextInput
-                                                                id="xixapay_api_key"
-                                                                type="text"
-                                                                className="mt-1 block w-full"
-                                                                value={data.xixapay_api_key}
-                                                                onChange={(e) => setData('xixapay_api_key', e.target.value)}
-                                                                required
-                                                            />
-                                                            <InputError message={errors.xixapay_api_key} className="mt-2" />
-                                                        </div>
-
-                                                        <div>
-                                                            <InputLabel htmlFor="xixapay_secret_key" value="XixaPay Secret Key" />
-                                                            <TextInput
-                                                                id="xixapay_secret_key"
-                                                                type="password"
-                                                                className="mt-1 block w-full"
-                                                                value={data.xixapay_secret_key}
-                                                                onChange={(e) => setData('xixapay_secret_key', e.target.value)}
-                                                                required
-                                                            />
-                                                            <InputError message={errors.xixapay_secret_key} className="mt-2" />
-                                                        </div>
-
-                                                        <div>
-                                                            <InputLabel htmlFor="xixapay_base_url" value="XixaPay Base URL" />
-                                                            <TextInput
-                                                                id="xixapay_base_url"
-                                                                type="text"
-                                                                className="mt-1 block w-full"
-                                                                value={data.xixapay_base_url}
-                                                                onChange={(e) => setData('xixapay_base_url', e.target.value)}
-                                                                required
-                                                            />
-                                                            <InputError message={errors.xixapay_base_url} className="mt-2" />
-                                                        </div>
-
-                                                        <div>
-                                                            <InputLabel htmlFor="xixapay_business_id" value="XixaPay Business ID" />
-                                                            <TextInput
-                                                                id="xixapay_business_id"
-                                                                type="text"
-                                                                className="mt-1 block w-full"
-                                                                value={data.xixapay_business_id}
-                                                                onChange={(e) => setData('xixapay_business_id', e.target.value)}
-                                                                required
-                                                            />
-                                                            <InputError message={errors.xixapay_business_id} className="mt-2" />
-                                                        </div>
-                                                    </div>
-
-                                                    <div className="mt-4 flex justify-end">
-                                                        <a href={route('admin.settings.test-xixapay')} className="btn btn-sm btn-secondary">
-                                                            Test XixaPay Connection
-                                                        </a>
-                                                    </div>
-                                                </div>
-
-                                                {/* API Details Widget */}
-                                                <div className="mt-8">
-                                                    <h4 className="text-md font-medium iggyy-updatey-700 mb-2">API Account Details</h4>
-                                                    <p className="text-sm iggyy-updatey-500 mb-4">
-                                                        Current balance and details from Datavendro API.
-                                                    </p>
-                                                    <ApiDetailsWidget apiDetails={apiDetails} />
-
-                                                    <div className="mt-4 flex justify-end">
-                                                        <a href={route('admin.settings.test-api')} className="btn btn-sm btn-secondary">
-                                                            Test API Connection
-                                                        </a>
-                                                        <a href={route('admin.settings.sync-data-plans')} className="btn btn-sm btn-primary ml-2">
-                                                            Sync Data Plans
-                                                        </a>
-                                                    </div>
                                                 </div>
                                             </div>
                                         )}

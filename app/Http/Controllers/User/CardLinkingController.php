@@ -164,12 +164,14 @@ class CardLinkingController extends Controller
                     'email' => $user->email,
                     'bank' => $authorization['bank'] ?? 'Unknown Bank',
                     'bin' => $authorization['bin'] ?? '',
+                    'exp_month' => $authorization['exp_month'] ?? '',
+                    'exp_year' => $authorization['exp_year'] ?? '',
+                    'expires_at' => $this->calculateExpirationDate($authorization['exp_month'] ?? '', $authorization['exp_year'] ?? ''),
                     'card_token' => $cardToken,
                     'is_default' => $isFirstCard,
                     'is_active' => true,
+                    'is_expired' => false,
                     'metadata' => [
-                        'exp_month' => $authorization['exp_month'] ?? '',
-                        'exp_year' => $authorization['exp_year'] ?? '',
                         'verified_at' => now()->toDateTimeString(),
                         'payment_reference' => $paymentData['id'] ?? '',
                         'customer_id' => $paymentData['customer']['id'] ?? null,
@@ -311,5 +313,146 @@ class CardLinkingController extends Controller
             'hasActiveCard' => (bool) $activeCard,
             'card' => $activeCard ? $activeCard->only(['id', 'last_four', 'bank', 'card_type']) : null,
         ]);
+    }
+
+    /**
+     * Calculate expiration date from exp_month and exp_year
+     */
+    protected function calculateExpirationDate(?string $expMonth, ?string $expYear): ?\DateTime
+    {
+        if (!$expMonth || !$expYear) {
+            return null;
+        }
+
+        try {
+            // Parse expiration date - cards expire at end of the month
+            $expiryDate = \Carbon\Carbon::createFromFormat('m/y', $expMonth . '/' . $expYear)
+                ->endOfMonth();
+            return $expiryDate;
+        } catch (\Exception $e) {
+            Log::warning('Failed to calculate card expiration date', [
+                'exp_month' => $expMonth,
+                'exp_year' => $expYear,
+                'error' => $e->getMessage(),
+            ]);
+            return null;
+        }
+    }
+
+    /**
+     * Delete expired or expiring cards and handle user restrictions
+     */
+    public function deleteExpiredCards(\App\Models\User $user): int
+    {
+        $deletedCount = 0;
+        $expiredCards = $user->cards()
+            ->where(function ($query) {
+                $query->where('is_expired', true)
+                    ->orWhere('expires_at', '<', now());
+            })
+            ->get();
+
+        foreach ($expiredCards as $card) {
+            try {
+                // Mark as expired first
+                $card->markAsExpired();
+
+                // Increase user's credit score due to expired card
+                $this->increaseScoreForExpiredCard($user, $card);
+
+                // Delete the card
+                $card->delete();
+                $deletedCount++;
+
+                Log::info('Expired card deleted', [
+                    'user_id' => $user->id,
+                    'card_id' => $card->id,
+                    'last_four' => $card->last_four,
+                ]);
+            } catch (\Exception $e) {
+                Log::error('Error deleting expired card', [
+                    'user_id' => $user->id,
+                    'card_id' => $card->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        // Recalculate eligibility if any cards were deleted
+        if ($deletedCount > 0) {
+            $this->recalculateEligibility($user);
+        }
+
+        return $deletedCount;
+    }
+
+    /**
+     * Increase user's credit score when card expires
+     */
+    protected function increaseScoreForExpiredCard(\App\Models\User $user, \App\Models\UserCard $card): void
+    {
+        try {
+            $eligibility = $user->borrowingEligibility;
+
+            if ($eligibility) {
+                // Increase credit score by 5 points when card expires
+                $newScore = min(100, $eligibility->credit_score + 5);
+                $eligibility->update([
+                    'credit_score' => $newScore,
+                ]);
+
+                // Log the credit score increase
+                \App\Models\Transaction::create([
+                    'user_id' => $user->id,
+                    'type' => 'credit_score_adjustment',
+                    'amount' => 5,
+                    'reference' => 'CARD_EXPIRED_SCORE_' . uniqid(),
+                    'status' => 'success',
+                    'description' => 'Credit score increased due to card expiration',
+                    'metadata' => [
+                        'card_last_four' => $card->last_four,
+                        'reason' => 'card_expired',
+                        'previous_score' => $eligibility->credit_score,
+                        'new_score' => $newScore,
+                    ],
+                ]);
+            }
+        } catch (\Exception $e) {
+            Log::error('Error increasing credit score for expired card', [
+                'user_id' => $user->id,
+                'card_id' => $card->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Check for expiring or expired cards and handle them
+     */
+    public function checkCardExpiration(\App\Models\User $user): array
+    {
+        $activeCard = $user->cards()->where('is_active', true)->first();
+
+        if (!$activeCard) {
+            return [
+                'has_active_card' => false,
+                'is_expired' => false,
+                'is_expiring_soon' => false,
+                'days_remaining' => null,
+            ];
+        }
+
+        // Check if card is expired or expiring
+        $isExpired = $activeCard->isExpired();
+        $isExpiringSoon = !$isExpired && $activeCard->isExpiringsoon();
+        $daysRemaining = $activeCard->getDaysUntilExpiration();
+
+        return [
+            'has_active_card' => true,
+            'is_expired' => $isExpired,
+            'is_expiring_soon' => $isExpiringSoon,
+            'days_remaining' => $daysRemaining,
+            'card_last_four' => $activeCard->last_four,
+        ];
     }
 }

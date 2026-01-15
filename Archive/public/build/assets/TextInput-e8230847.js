@@ -1,1 +1,0 @@
-import{r as t,j as f}from"./app-bb685861.js";const i=t.forwardRef(function({type:s="text",className:u="",isFocused:n=!1,...o},r){const e=r||t.useRef();return t.useEffect(()=>{n&&e.current.focus()},[]),f.jsx("input",{...o,type:s,className:"input w-full input-bordered border-primary"+u,ref:e})});export{i as T};

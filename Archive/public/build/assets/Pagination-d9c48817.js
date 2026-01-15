@@ -1,1 +1,0 @@
-import{j as n,x as i}from"./app-bb685861.js";function s({links:t}){return n.jsx(n.Fragment,{children:n.jsx("div",{className:"join",children:t.map(r=>{let a=r.url==null;return n.jsx(i,{className:`join-item btn ${r.active==!0?" btn-primary":""}`,disabled:a,href:`${r==null?void 0:r.url}`,dangerouslySetInnerHTML:{__html:r==null?void 0:r.label}})})})})}export{s as P};

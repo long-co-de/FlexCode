@@ -91,6 +91,10 @@ export default function ShowTransaction({ auth, transaction }) {
                                         <p className="mt-1">₦{transaction.fee}</p>
                                     </div>
                                     <div className="mb-4">
+                                        <p className="text-sm font-medium iggyy-updatey-500">Profit per Transaction</p>
+                                        <p className="mt-1 text-lg font-bold text-green-600">₦{transaction.profit}</p>
+                                    </div>
+                                    <div className="mb-4">
                                         <p className="text-sm font-medium iggyy-updatey-500">Status</p>
                                         <p className="mt-1">
                                             <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full 

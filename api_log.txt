@@ -1,3 +1,0 @@
-[2026-01-05 14:10:37] URL: https://datavendor.ng/api/validatemeter?meternumber=45150406911&disconame=Yola+Electric&mtype=prepaid, HTTP Code: 200, Response: {"invalid":false,"name":"NAGGE PLAZA","address":"NO. 1 LUGGERE STREET"}
-[2026-01-05 14:11:05] URL: https://datavendor.ng/api/validatemeter?meternumber=45150406911&disconame=Yola-Electric&mtype=prepaid, HTTP Code: 200, Response: {"invalid":false,"name":"NAGGE PLAZA","address":"NO. 1 LUGGERE STREET"}
-[2026-01-05 14:11:21] URL: https://datavendor.ng/api/validatemeter?meternumber=45150406911&disconame=yola-electric&mtype=prepaid, HTTP Code: 200, Response: {"invalid":false,"name":"NAGGE PLAZA","address":"NO. 1 LUGGERE STREET"}

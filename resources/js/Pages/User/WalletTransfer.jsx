@@ -29,9 +29,17 @@ export default function WalletTransfer({ auth }) {
     const [saveBeneficiaryName, setSaveBeneficiaryName] = useState('');
     const [filteredBeneficiaries, setFilteredBeneficiaries] = useState([]);
     const [searchQuery, setSearchQuery] = useState('');
+    const [transferToken, setTransferToken] = useState(null);
+    const [isTransferring, setIsTransferring] = useState(false);
 
     // Load beneficiaries and transfer history on mount
     useEffect(() => {
+        // Generate unique request ID on component mount for this transfer session
+        const generateRequestId = () => {
+            return 'REQ-' + Date.now() + '-' + Math.random().toString(36).substr(2, 16);
+        };
+        setTransferToken(generateRequestId());
+
         // Load beneficiaries
         axios.get(route('beneficiaries.index.api'))
             .then(response => {
@@ -131,6 +139,11 @@ export default function WalletTransfer({ auth }) {
     };
 
     const handlePinSubmit = () => {
+        // **SECURITY: Prevent double submission during transfer**
+        if (isTransferring) {
+            return;
+        }
+
         setPinError('');
         const pinString = pin.join('');
 
@@ -140,16 +153,19 @@ export default function WalletTransfer({ auth }) {
         }
 
         setVerifyingPin(true);
+        setIsTransferring(true);
 
-        // Set the PIN in the form data
+        // Set the PIN and request_id in the form data
         setData('pin', pinString);
+        setData('request_id', transferToken);
 
-        // Submit the form with PIN
+        // Submit the form with PIN and request_id
         post(route('wallet.transfer'), {
             onSuccess: (response) => {
                 reset();
                 setPin(['', '', '', '']);
                 setShowPinModal(false);
+                setIsTransferring(false);
 
                 // Add the new transfer to history
                 setTransferHistory(prevHistory => [{
@@ -180,12 +196,21 @@ export default function WalletTransfer({ auth }) {
                 notificationTimeout.current = setTimeout(() => setShowNotification(false), 4000);
 
                 setVerifiedUser(null);
+
+                // **SECURITY: Generate new request ID for next potential transfer**
+                const generateRequestId = () => {
+                    return 'REQ-' + Date.now() + '-' + Math.random().toString(36).substr(2, 16);
+                };
+                setTransferToken(generateRequestId());
             },
             onError: (errors) => {
                 if (errors.pin) {
                     setPinError(errors.pin);
+                } else if (errors.error) {
+                    setPinError(errors.error);
                 }
                 setVerifyingPin(false);
+                setIsTransferring(false);
             },
             onFinish: () => {
                 setVerifyingPin(false);
@@ -426,17 +451,18 @@ export default function WalletTransfer({ auth }) {
                         <button
                             type="button"
                             onClick={() => setShowPinModal(false)}
-                            className="px-4 py-2 bg-base-100  border border-gray-300 rounded-lg font-semibold text-xs text-gray-700 uppercase tracking-widest shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 transition"
+                            disabled={isTransferring}
+                            className="px-4 py-2 bg-base-100  border border-gray-300 rounded-lg font-semibold text-xs text-gray-700 uppercase tracking-widest shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 transition disabled:opacity-50"
                         >
                             Cancel
                         </button>
                         <button
                             type="button"
                             onClick={handlePinSubmit}
-                            disabled={verifyingPin || pin.some(digit => digit === '')}
+                            disabled={verifyingPin || isTransferring || pin.some(digit => digit === '')}
                             className="px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold text-xs uppercase tracking-widest hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 disabled:opacity-50 transition"
                         >
-                            {verifyingPin ? 'Processing...' : 'Confirm Transfer'}
+                            {verifyingPin || isTransferring ? 'Processing...' : 'Confirm Transfer'}
                         </button>
                     </div>
                 </div>

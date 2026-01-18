@@ -141,38 +141,20 @@ class ProcessBorrowingRepayments extends Command
             ];
         }
 
-        // Create repayment record
-        $repayment = BorrowingRepayment::create([
-            'borrowing_id' => $borrowing->id,
-            'user_id' => $user->id,
-            'reference' => 'REP_' . Str::random(10),
-            'amount' => $borrowing->total_amount,
-            'payment_method' => 'card',
-            'status' => 'pending',
-        ]);
-
         try {
-            // Use PaymentService to charge card
+            // Use PaymentService to charge card and update records atomically
             $result = $this->paymentService->processBorrowingRepayment($borrowing);
 
-            // Payment successful - mark borrowing as paid
-            $borrowing->status = 'paid';
-            $borrowing->repaid_at = now();
-            $borrowing->payment_note = 'Auto-deducted successfully';
-            $borrowing->save();
-
-            $repayment->status = 'success';
-            $repayment->save();
-
-            return [
-                'success' => true,
-                'message' => "Successfully processed {$borrowing->reference}",
-            ];
+            if ($result['success']) {
+                return [
+                    'success' => true,
+                    'message' => "Successfully processed {$borrowing->reference}",
+                ];
+            } else {
+                throw new \Exception($result['message'] ?? 'Payment failed');
+            }
 
         } catch (\Exception $e) {
-            $repayment->status = 'failed';
-            $repayment->payment_gateway_response = $e->getMessage();
-            $repayment->save();
 
             // Update retry count
             $borrowing->retry_count++;

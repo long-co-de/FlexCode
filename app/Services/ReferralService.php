@@ -54,27 +54,30 @@ class ReferralService
 
             // Create referral commission transaction
             DB::transaction(function () use ($referrer, $user, $bonusAmount, $transaction) {
+                // Lock referrer row to prevent race conditions on balance/earnings
+                $lockedReferrer = User::where('id', $referrer->id)->lockForUpdate()->firstOrFail();
+
                 // Create commission transaction
                 Transaction::create([
-                    'user_id' => $referrer->id,
+                    'user_id' => $lockedReferrer->id,
                     'reference' => 'REF-' . $transaction->reference,
                     'type' => 'commission',
                     'amount' => $bonusAmount,
                     'status' => 'successful',
                     'description' => "Referral bonus (4%) from user {$user->name}'s first deposit",
                     'referral_user_id' => $user->id,
-                    'meta_data' => json_encode([
+                    'meta_data' => [
                         'referred_user_id' => $user->id,
                         'referred_user_name' => $user->name,
                         'original_transaction_id' => $transaction->id,
                         'deposit_amount' => $transaction->amount,
                         'bonus_percentage' => 4,
-                    ]),
+                    ],
                 ]);
 
                 // Update referrer's earnings
-                $referrer->increment('total_referral_earnings', $bonusAmount);
-                $referrer->increment('wallet_balance', $bonusAmount);
+                $lockedReferrer->increment('total_referral_earnings', $bonusAmount);
+                $lockedReferrer->increment('wallet_balance', $bonusAmount);
             });
 
             // Send email notification to referrer

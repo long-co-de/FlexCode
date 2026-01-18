@@ -85,7 +85,7 @@ const MyBorrowings = ({ borrowings, eligibility }) => {
                         <h2 className="text-xl font-bold text-slate-800">My Borrowings</h2>
                         <p className="text-sm text-slate-500">Track and manage your credit history</p>
                     </div>
-                    <div className="bg-white px-4 py-2 rounded-xl shadow-sm border border-slate-100 flex items-center gap-2">
+                    <div className="bg-base-100 px-4 py-2 rounded-xl shadow-sm border border-base-300 100 flex items-center gap-2">
                         <FaChartLine className="text-sky-500 text-sm" />
                         <span className="text-sm font-bold text-slate-700">Credit Score: {eligibility?.credit_score || 0}</span>
                     </div>
@@ -98,12 +98,12 @@ const MyBorrowings = ({ borrowings, eligibility }) => {
                 {/* Stats Grid */}
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
                     {stats.map((stat, i) => (
-                        <div key={i} className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm transition-transform hover:scale-[1.02]">
+                        <div key={i} className="bg-base-100 p-5 rounded-3xl border border-base-300 100 shadow-sm transition-transform hover:scale-[1.02]">
                             <div className={`w-10 h-10 rounded-2xl ${stat.color} flex items-center justify-center mb-3`}>
                                 {stat.icon}
                             </div>
                             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">{stat.label}</p>
-                            <p className="text-lg font-black text-slate-800">{stat.value}</p>
+                            <p className="text-lg font-black base">{stat.value}</p>
                         </div>
                     ))}
                 </div>
@@ -113,7 +113,7 @@ const MyBorrowings = ({ borrowings, eligibility }) => {
                     <div className="relative overflow-hidden bg-gradient-to-br from-slate-900 to-slate-800 rounded-[2.5rem] p-8 mb-8 text-white shadow-xl">
                         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
                             <div className="flex items-center gap-6">
-                                <div className="w-16 h-16 rounded-2xl bg-white/10 backdrop-blur-md flex items-center justify-center border border-white/20">
+                                <div className="w-16 h-16 rounded-2xl bg-base-100/10 backdrop-blur-md flex items-center justify-center border border-white/20">
                                     <GiReceiveMoney className="text-4xl text-sky-400" />
                                 </div>
                                 <div>
@@ -128,7 +128,7 @@ const MyBorrowings = ({ borrowings, eligibility }) => {
                             <div className="flex items-center gap-3">
                                 <Link
                                     href={route('borrow.airtime')}
-                                    className="h-12 px-6 rounded-2xl bg-white/10 hover:bg-white/20 text-white font-bold text-sm transition-all flex items-center gap-2 border border-white/10"
+                                    className="h-12 px-6 rounded-2xl bg-base-100/10 hover:bg-base-100/20 text-white font-bold text-sm transition-all flex items-center gap-2 border border-white/10"
                                 >
                                     <FaPhone className="text-xs" />
                                     Airtime
@@ -148,9 +148,9 @@ const MyBorrowings = ({ borrowings, eligibility }) => {
                 )}
 
                 {/* Main Content */}
-                <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden">
+                <div className="bg-base-100 rounded-[2.5rem] shadow-sm border border-base-300 100 overflow-hidden">
                     {/* Filter Tabs */}
-                    <div className="px-8 pt-8 pb-4 border-b border-slate-50">
+                    <div className="px-8 pt-8 pb-4 border-b border-base-300 50">
                         <div className="flex items-center gap-8 overflow-x-auto no-scrollbar">
                             {[
                                 { id: 'active', label: 'Active', icon: <FaClock />, count: borrowings.data.filter(b => b.status === 'active').length },
@@ -168,7 +168,7 @@ const MyBorrowings = ({ borrowings, eligibility }) => {
                                     <span className="text-xs">{tab.icon}</span>
                                     {tab.label}
                                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
-                                        activeTab === tab.id ? 'bg-sky-50 text-sky-600' : 'bg-slate-50 text-slate-400'
+                                        activeTab === tab.id ? 'bg-sky-50 text-sky-600' : 'bg-base-300 text-slate-400'
                                     }`}>
                                         {tab.count}
                                     </span>
@@ -183,7 +183,7 @@ const MyBorrowings = ({ borrowings, eligibility }) => {
                     <div className="p-8">
                         {filteredBorrowings.length === 0 ? (
                             <div className="py-20 text-center">
-                                <div className="w-24 h-24 bg-slate-50 rounded-[2rem] flex items-center justify-center mx-auto mb-6">
+                                <div className="w-24 h-24 bg-base-300 rounded-[2rem] flex items-center justify-center mx-auto mb-6">
                                     <FaRegCreditCard className="text-4xl text-slate-200" />
                                 </div>
                                 <h3 className="text-xl font-bold text-slate-800 mb-2">No Transactions Found</h3>
@@ -215,14 +215,14 @@ const MyBorrowings = ({ borrowings, eligibility }) => {
                         {/* Pagination */}
                         {borrowings.links && borrowings.links.length > 3 && (
                             <div className="mt-12 flex justify-center">
-                                <div className="flex gap-2 p-2 bg-slate-50 rounded-2xl border border-slate-100">
+                                <div className="flex gap-2 p-2 bg-base-300 rounded-2xl border border-base-300 100">
                                     {borrowings.links.map((link, index) => (
                                         <Link
                                             key={index}
                                             href={link.url || '#'}
                                             className={`h-10 px-4 rounded-xl flex items-center justify-center text-xs font-black transition-all ${
                                                 link.active 
-                                                ? 'bg-white text-sky-500 shadow-sm border border-slate-100' 
+                                                ? 'bg-base-100 text-sky-500 shadow-sm border border-base-300 100' 
                                                 : 'text-slate-400 hover:text-slate-600'
                                             } ${!link.url ? 'opacity-30 pointer-events-none' : ''}`}
                                             dangerouslySetInnerHTML={{ __html: link.label }}

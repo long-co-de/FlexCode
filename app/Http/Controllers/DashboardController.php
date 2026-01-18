@@ -149,9 +149,21 @@ class DashboardController extends Controller
             ->get();
 
         // Prepare chart data
+        $dailyProfit = Transaction::where('status', 'successful')
+            ->whereIn('type', ['data', 'airtime', 'cable', 'electricity', 'borrowing_repayment'])
+            ->where('created_at', '>=', now()->subDays(7))
+            ->select(
+                DB::raw('DATE(created_at) as date'),
+                DB::raw('SUM(profit) as total_profit'),
+                DB::raw('COUNT(*) as count')
+            )
+            ->groupBy('date')
+            ->orderBy('date')
+            ->get();
+
         $chartData = [
             'transactionsChart' => $this->prepareTransactionsChart($dailyTransactions),
-            'revenueChart' => $this->prepareRevenueChart($dailyTransactions),
+            'revenueChart' => $this->prepareRevenueChart($dailyProfit),
             'userGrowthChart' => $this->prepareUserGrowthChart(),
             'transactionTypesChart' => $this->prepareTransactionTypesChart($serviceUsage),
         ];
@@ -182,7 +194,9 @@ class DashboardController extends Controller
             'stats' => [
                 'totalUsers' => $userStats['total'],
                 'totalTransactions' => $transactionStats['total'],
-                'totalRevenue' => Transaction::where('status', 'successful')->sum('amount'),
+                'totalRevenue' => Transaction::where('status', 'successful')
+                    ->whereIn('type', ['data', 'airtime', 'cable', 'electricity', 'borrowing_repayment'])
+                    ->sum('profit'),
                 'totalWalletBalance' => $userStats['total_wallet_balance'],
                 'successRate' => $transactionStats['total'] > 0
                     ? round(($transactionStats['successful'] / $transactionStats['total']) * 100)
@@ -226,13 +240,13 @@ class DashboardController extends Controller
     private function prepareRevenueChart($dailyTransactions)
     {
         $labels = $dailyTransactions->pluck('date')->toArray();
-        $amounts = $dailyTransactions->pluck('total_amount')->toArray();
+        $amounts = $dailyTransactions->pluck('total_profit')->toArray();
 
         return [
             'labels' => $labels,
             'datasets' => [
                 [
-                    'label' => 'Revenue',
+                    'label' => 'Profit',
                     'data' => $amounts,
                     'fill' => false,
                     'borderColor' => 'rgb(34, 197, 94)',

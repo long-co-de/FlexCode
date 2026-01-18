@@ -35,7 +35,7 @@ export default function DashboardStats({ stats }) {
                 subtitle="All processed transactions"
             />
             <StatCard 
-                title="Total Revenue" 
+                title="Total Profit" 
                 value={formatCurrency(stats?.totalRevenue)} 
                 icon={<BanknotesIcon className="h-8 w-8 text-yellow-500" />} 
                 color="warning"

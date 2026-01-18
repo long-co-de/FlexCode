@@ -149,7 +149,19 @@ export default function Wallet({ auth, paymentMethods, recentTransactions, walle
         }
 
         const amountValue = parseFloat(amount);
-        const charge = (amountValue * chargePercentage) / 100;
+        let charge = 0;
+        
+        if (method.code === 'bank_transfer' || method.code === 'virtual_account') {
+            chargePercentage = 1.5;
+            charge = (amountValue * chargePercentage) / 100;
+        } else {
+            chargePercentage = 1.5;
+            charge = (amountValue * chargePercentage) / 100;
+            if (amountValue >= 2000) {
+                charge += 100;
+            }
+        }
+        
         const finalAmount = amountValue - charge;
 
         setCalculatedCharges({ amount: amountValue, charge, chargePercentage, finalAmount });
@@ -211,6 +223,11 @@ export default function Wallet({ auth, paymentMethods, recentTransactions, walle
     };
 
     const createVirtualAccount = (provider) => {
+        if (!auth.user.phone_number) {
+            alert('Please update your phone number in your profile before generating a bank account.');
+            location.href = route('profile.edit');
+            return;
+        }
         window.location.href = route('wallet.virtual-account', { provider });
     };
 
@@ -292,7 +309,7 @@ export default function Wallet({ auth, paymentMethods, recentTransactions, walle
                                             <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider">Fund</span>
                                         </button>
                                         
-                                        <Link 
+                                        {/* <Link 
                                             href={route('wallet.transfer.show')}
                                             className="flex flex-col items-center gap-2 sm:gap-3 p-3 sm:p-4 rounded-2xl sm:rounded-3xl bg-white/10 hover:bg-white/20 transition-all border border-white/10 group"
                                         >
@@ -300,16 +317,16 @@ export default function Wallet({ auth, paymentMethods, recentTransactions, walle
                                                 <FaExchangeAlt className="text-[10px] sm:text-sm text-white" />
                                             </div>
                                             <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider">Transfer</span>
-                                        </Link>
+                                        </Link> */}
 
-                                        <button 
+                                        {/* <button 
                                             className="flex flex-col items-center gap-2 sm:gap-3 p-3 sm:p-4 rounded-2xl sm:rounded-3xl bg-white/10 hover:bg-white/20 transition-all border border-white/10 group opacity-50 cursor-not-allowed"
                                         >
                                             <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-purple-500 flex items-center justify-center">
                                                 <FaMoneyBillWave className="text-[10px] sm:text-sm text-white" />
                                             </div>
                                             <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider">Withdraw</span>
-                                        </button>
+                                        </button> */}
 
                                         <button 
                                             onClick={() => openDrawer('coupon')}
@@ -411,7 +428,7 @@ export default function Wallet({ auth, paymentMethods, recentTransactions, walle
                                             </div>
                                             <p className="text-sm font-bold text-slate-400">No virtual accounts available.</p>
                                             <button 
-                                                onClick={() => createVirtualAccount('vfd')}
+                                                onClick={() => createVirtualAccount('paystack')}
                                                 className="mt-4 px-6 py-2 bg-slate-900 text-white text-xs font-black rounded-xl uppercase tracking-widest hover:bg-slate-800 transition-all"
                                             >
                                                 Generate Account

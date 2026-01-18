@@ -8,7 +8,8 @@ import {
     FaHistory, FaChartLine, FaShieldAlt, FaArrowRight,
     FaInfoCircle, FaRegCreditCard, FaCoins, FaPhone, FaWifi,
     FaLightbulb, FaTv, FaMoneyBillWave, FaPlus, FaCreditCard, FaLock,
-    FaComment, FaSearch
+    FaComment, FaSearch,
+    FaUniversity,FaCopy
 } from 'react-icons/fa';
 import { GiReceiveMoney, GiPayMoney } from 'react-icons/gi';
 
@@ -40,6 +41,21 @@ export default function Dashboard({ auth, transactionStats, recentTransactions, 
             setCopiedCode(true);
             setTimeout(() => setCopiedCode(false), 2000);
         }
+    };
+
+    const generateAccount = () => {
+        if (!auth.user.phone_number) {
+            alert('Please update your phone number in your profile before generating a bank account.');
+            router.get(route('profile.edit'));
+            return;
+        }
+        router.get(route('wallet.virtual-account', { provider: 'paystack' }));
+    };
+
+    const copyToClipboard = (text) => {
+        navigator.clipboard.writeText(text).then(() => {
+            alert('Account number copied!');
+        });
     };
 
     if (showPinVerification && !auth.user.isAdmin) {
@@ -176,6 +192,7 @@ export default function Dashboard({ auth, transactionStats, recentTransactions, 
 
                 {/* Referral Card */}
                 <div className="bg-gradient-to-br from-secondary/20 to-secondary/10 rounded-[2.5rem] p-6 border border-secondary/30 shadow-lg">
+                    {/* ... (referral card content remains same) */}
                     <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
                         <div className="flex items-start gap-5 flex-1">
                             <div className="w-14 h-14 rounded-2xl bg-secondary/20 flex items-center justify-center flex-shrink-0">
@@ -223,6 +240,64 @@ export default function Dashboard({ auth, transactionStats, recentTransactions, 
                                 <p className="text-xl font-black text-primary">₦{Number(referralStats?.total_earnings || 0).toLocaleString()}</p>
                             </div>
                         </div>
+                    </div>
+                </div>
+
+                {/* Dedicated Bank Accounts */}
+                <div className="bg-base-100 rounded-[2.5rem] p-6 sm:p-8 shadow-sm border border-base-300">
+                    <div className="flex items-center justify-between mb-6">
+                        <h4 className="text-xs sm:text-sm font-black text-base-content uppercase tracking-widest flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                                <FaUniversity className="text-primary text-xs" />
+                            </div>
+                            Dedicated Accounts
+                        </h4>
+                    </div>
+
+                    <div className="grid gap-4">
+                        {auth.user.virtual_account_details && Object.keys(auth.user.virtual_account_details).length > 0 ? (
+                            Object.entries(auth.user.virtual_account_details).map(([provider, account], i) => (
+                                <div key={i} className="relative group overflow-hidden bg-base-200/50 rounded-3xl p-5 border border-base-300 hover:border-primary/30 transition-all">
+                                    <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-6">
+                                        <div className="flex items-center gap-4">
+                                            <div className="w-12 h-12 rounded-2xl bg-base-100 shadow-sm flex items-center justify-center text-xl text-primary border border-base-300">
+                                                <FaUniversity />
+                                            </div>
+                                            <div className="min-w-0">
+                                                <p className="text-[10px] font-black uppercase text-base-content/50 tracking-widest mb-0.5">{account.bank_name}</p>
+                                                <div className="flex items-center gap-2">
+                                                    <p className="text-xl font-black text-base-content">{account.account_number}</p>
+                                                    <button 
+                                                        onClick={() => copyToClipboard(account.account_number)}
+                                                        className="p-1.5 text-base-content/30 hover:text-primary transition-colors"
+                                                    >
+                                                        <FaCopy className="text-xs" />
+                                                    </button>
+                                                </div>
+                                                <p className="text-xs font-bold text-base-content/60 mt-0.5 truncate uppercase">{account.account_name}</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-success bg-success/10 px-3 py-1.5 rounded-full self-start sm:self-center">
+                                            <FaCheckCircle />
+                                            Active
+                                        </div>
+                                    </div>
+                                </div>
+                            ))
+                        ) : (
+                            <div className="text-center py-10 bg-base-200/50 rounded-[2rem] border-2 border-dashed border-base-300">
+                                <div className="w-16 h-16 bg-base-100 rounded-2xl flex items-center justify-center mx-auto mb-4 text-base-content/20">
+                                    <FaUniversity className="text-2xl" />
+                                </div>
+                                <p className="text-sm font-bold text-base-content/40">No virtual accounts generated yet.</p>
+                                <button 
+                                    onClick={generateAccount}
+                                    className="mt-4 px-8 py-3 bg-primary text-primary-content text-[10px] font-black rounded-xl uppercase tracking-widest hover:bg-primary/90 transition-all shadow-lg"
+                                >
+                                    Generate Dedicated Account
+                                </button>
+                            </div>
+                        )}
                     </div>
                 </div>
 

@@ -2,7 +2,7 @@
 // File: BorrowingAirtimeController.php
 namespace App\Http\Controllers\User;
 
-use App\Http\Controllers\Controller;
+use App\Http\Controllers\AtomicController;
 use App\Models\Network;
 use App\Models\Borrowing;
 use App\Models\BorrowingEligibility;
@@ -13,7 +13,7 @@ use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\Auth;
 
-class BorrowingAirtimeController extends Controller
+class BorrowingAirtimeController extends AtomicController
 {
     protected $borrowingService;
     protected $eligibilityService;
@@ -108,9 +108,20 @@ class BorrowingAirtimeController extends Controller
             'save_as_beneficiary' => 'nullable|boolean',
             'beneficiary_name' => 'nullable|string|max:255',
             'pin' => 'required|string|size:4',
+            'request_id' => 'nullable|string',
         ]);
 
         $user = Auth::user();
+
+        // Rate limiting
+        if ($this->isRateLimited($user->id, 'borrow_airtime')) {
+            return redirect()->back()->with('error', 'Too many requests. Please try again in a minute.');
+        }
+
+        // Deduplication check
+        if ($request->request_id && $this->isDuplicateRequest($request->request_id, $user->id, 'borrow_airtime')) {
+            return redirect()->back()->with('error', 'This request has already been processed.');
+        }
 
         // SECURITY: Check if user has active linked card before allowing borrowing
         $activeCard = $user->cards()->where('is_active', true)->first();
@@ -127,14 +138,16 @@ class BorrowingAirtimeController extends Controller
         $network = Network::findOrFail($request->network_id);
 
         try {
-            // Process borrowing
-            $borrowing = $this->borrowingService->borrowAirtime(
-                $user,
-                $request->phone_number,
-                $request->amount,
-                $network->name,
-                $request->duration ?? 7
-            );
+            // Process borrowing atomically
+            $borrowing = $this->processAtomicTransaction($user->id, 0, function ($lockedUser) use ($request, $network) {
+                return $this->borrowingService->borrowAirtime(
+                    $lockedUser,
+                    $request->phone_number,
+                    $request->amount,
+                    $network->name,
+                    $request->duration ?? 7
+                );
+            });
 
             // Save as beneficiary if requested
             if ($request->save_as_beneficiary && $request->beneficiary_name) {

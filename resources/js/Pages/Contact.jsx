@@ -38,7 +38,7 @@ export default function Contact({ auth, info }) {
                 <nav className="relative z-10 px-4 pt-6 sm:px-6 lg:px-8 bg-primary py-6">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center">
-                            <div className="text-white text-3xl font-bold">Paylow</div>
+                            <div className="text-white text-3xl font-bold">BorrowLite</div>
                         </div>
                         <div className="grid ms-auto xl:flex items-center space-x-4">
                           

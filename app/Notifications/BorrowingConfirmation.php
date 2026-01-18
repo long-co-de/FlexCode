@@ -55,7 +55,7 @@ class BorrowingConfirmation extends Notification implements ShouldQueue
             ->line('')
             ->action('View Borrowing Details', url('/borrow/my-borrowings'))
             ->line('Remember: Auto-deduction will happen on or after your due date.')
-            ->line('Thank you for using Paylow!');
+            ->line('Thank you for using BorrowLite!');
     }
 
     public function toArray(object $notifiable): array

@@ -383,19 +383,48 @@ export default function Electricity({
                                                             {data.amount && (
                                                                 <div className="bg-slate-900 rounded-2xl sm:rounded-[2rem] p-5 sm:p-6 text-white space-y-3">
                                                                     <div className="flex justify-between text-xs sm:text-sm">
-                                                                        <span className="text-slate-400 font-medium">Principal Amount</span>
+                                                                        <span className="text-slate-400 font-medium">Recharge Amount</span>
                                                                         <span className="font-bold">₦{parseFloat(data.amount).toLocaleString()}</span>
                                                                     </div>
                                                                     <div className="flex justify-between text-xs sm:text-sm">
+                                                                        <span className="text-slate-400 font-medium">Service Fee & VAT</span>
+                                                                        <span className="font-bold text-sky-400">+₦200.00</span>
+                                                                    </div>
+                                                                    <div className="flex justify-between text-xs sm:text-sm border-t border-white/5 pt-2">
+                                                                        <span className="text-slate-400 font-medium">Total Borrowed</span>
+                                                                        <span className="font-bold">₦{(parseFloat(data.amount) + 200).toLocaleString()}</span>
+                                                                    </div>
+                                                                    <div className="flex justify-between text-xs sm:text-sm">
                                                                         <span className="text-slate-400 font-medium">Interest ({getInterestRate()}%)</span>
-                                                                        <span className="font-bold text-sky-400">+₦{((parseFloat(data.amount) * getInterestRate()) / 100).toLocaleString()}</span>
+                                                                        <span className="font-bold text-sky-400">+₦{(((parseFloat(data.amount) + 200) * getInterestRate()) / 100).toLocaleString()}</span>
                                                                     </div>
                                                                     <div className="pt-3 border-t border-white/10 flex justify-between items-center">
                                                                         <span className="text-sm font-bold">Total Repayment</span>
-                                                                        <span className="text-xl sm:text-2xl font-black text-sky-400">₦{calculateTotalRepayment(data.amount).toLocaleString()}</span>
+                                                                        <span className="text-xl sm:text-2xl font-black text-sky-400">₦{calculateTotalRepayment(parseFloat(data.amount) + 200).toLocaleString()}</span>
                                                                     </div>
                                                                 </div>
                                                             )}
+                                                        </div>
+                                                    )}
+
+                                                    {!useBNPL && data.amount && (
+                                                        <div className="bg-slate-100 rounded-2xl sm:rounded-[2rem] p-5 sm:p-6 space-y-3 animate-in fade-in slide-in-from-top-4">
+                                                            <div className="flex justify-between text-xs sm:text-sm">
+                                                                <span className="text-slate-500 font-medium">Recharge Amount</span>
+                                                                <span className="font-black text-slate-700">₦{parseFloat(data.amount).toLocaleString()}</span>
+                                                            </div>
+                                                            <div className="flex justify-between text-xs sm:text-sm">
+                                                                <span className="text-slate-500 font-medium">Service Fee</span>
+                                                                <span className="font-black text-slate-700">₦100.00</span>
+                                                            </div>
+                                                            <div className="flex justify-between text-xs sm:text-sm">
+                                                                <span className="text-slate-500 font-medium">VAT</span>
+                                                                <span className="font-black text-slate-700">₦100.00</span>
+                                                            </div>
+                                                            <div className="pt-3 border-t border-slate-200 flex justify-between items-center">
+                                                                <span className="text-sm font-black text-slate-800">Total Payable</span>
+                                                                <span className="text-xl sm:text-2xl font-black text-sky-600">₦{(parseFloat(data.amount) + 200).toLocaleString()}</span>
+                                                            </div>
                                                         </div>
                                                     )}
 

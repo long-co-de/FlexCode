@@ -50,6 +50,7 @@ class PaymentService
         );
     }
 
+
     /**
      * Process borrowing repayment
      */
@@ -74,45 +75,77 @@ class PaymentService
         );
 
         if ($chargeResponse['success']) {
-            // Create repayment record
-            $repayment = BorrowingRepayment::create([
-                'borrowing_id' => $borrowing->id,
-                'user_id' => $user->id,
-                'reference' => $reference,
-                'amount' => $borrowing->total_amount,
-                'payment_method' => 'card',
-                'status' => 'success',
-                'payment_gateway_response' => json_encode($chargeResponse['data']),
-                'metadata' => [
-                    'card_last_four' => $defaultCard->last_four,
-                    'card_type' => $defaultCard->card_type,
-                    'transaction_id' => $chargeResponse['data']['id'] ?? null,
-                ],
-            ]);
+            return \Illuminate\Support\Facades\DB::transaction(function () use ($borrowing, $user, $defaultCard, $chargeResponse, $reference) {
+                // Re-fetch with lock
+                $borrowing = Borrowing::where('id', $borrowing->id)->lockForUpdate()->first();
+                if ($borrowing->status === 'paid') {
+                    return [
+                        'success' => true,
+                        'message' => 'Already paid',
+                    ];
+                }
 
-            // Update borrowing status
-            $borrowing->status = 'paid';
-            $borrowing->repaid_at = now();
-            $borrowing->save();
+                // Create repayment record
+                $repayment = BorrowingRepayment::create([
+                    'borrowing_id' => $borrowing->id,
+                    'user_id' => $user->id,
+                    'reference' => $reference,
+                    'amount' => $borrowing->total_amount,
+                    'payment_method' => 'card',
+                    'status' => 'success',
+                    'payment_gateway_response' => json_encode($chargeResponse['data']),
+                    'metadata' => [
+                        'card_last_four' => $defaultCard->last_four,
+                        'card_type' => $defaultCard->card_type,
+                        'transaction_id' => $chargeResponse['data']['id'] ?? null,
+                    ],
+                ]);
 
-            // Return available credit to eligibility
-            $eligibility = $user->borrowingEligibility;
-            if ($eligibility) {
-                $eligibility->available_credit += $borrowing->amount;
-                $eligibility->save();
-            }
+                // Update borrowing status
+                $borrowing->status = 'paid';
+                $borrowing->repaid_at = now();
+                $borrowing->save();
 
-            Log::info('Borrowing repayment successful', [
-                'borrowing_id' => $borrowing->id,
-                'user_id' => $user->id,
-                'amount' => $borrowing->total_amount,
-            ]);
+                // Return available credit to eligibility
+                $eligibility = $user->borrowingEligibility;
+                if ($eligibility) {
+                    $eligibility->available_credit += $borrowing->amount;
+                    $eligibility->save();
+                }
 
-            return [
-                'success' => true,
-                'message' => 'Repayment successful',
-                'repayment' => $repayment,
-            ];
+                // Create transaction record for the repayment (PROFIT TRACKING)
+                $interestProfit = $borrowing->total_amount - $borrowing->amount;
+                \App\Models\Transaction::create([
+                    'user_id' => $user->id,
+                    'reference' => $reference,
+                    'type' => 'borrowing_repayment',
+                    'amount' => $borrowing->total_amount,
+                    'profit' => $interestProfit,
+                    'status' => 'successful',
+                    'recipient' => 'System',
+                    'description' => "Debt settlement (Card) for {$borrowing->reference}",
+                    'meta_data' => [
+                        'borrowing_id' => $borrowing->id,
+                        'method' => 'card',
+                        'principal' => $borrowing->amount,
+                        'interest' => $interestProfit,
+                        'paystack_id' => $chargeResponse['data']['id'] ?? null,
+                    ],
+                ]);
+
+                Log::info('Borrowing repayment successful with profit tracked', [
+                    'borrowing_id' => $borrowing->id,
+                    'user_id' => $user->id,
+                    'amount' => $borrowing->total_amount,
+                    'profit' => $interestProfit
+                ]);
+
+                return [
+                    'success' => true,
+                    'message' => 'Repayment successful',
+                    'repayment' => $repayment,
+                ];
+            });
         }
 
         // Handle failure
@@ -279,5 +312,18 @@ class PaymentService
             'success' => true,
             'message' => 'Payment can proceed',
         ];
+    }
+     /**
+     * Charge authorization code
+     */
+    public function chargeAuthorization($authorizationCode, $amount, $email, $description)
+    {
+        // Delegate to PaystackService
+        return $this->paystackService->chargeAuthorization(
+            $authorizationCode,
+            $amount,
+            $email,
+            $description
+        );
     }
 }

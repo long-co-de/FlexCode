@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Http\Controllers\Controller;
+use App\Http\Controllers\AtomicController;
 use Illuminate\Http\Request;
 use App\Models\Network;
 use App\Models\DataPlan;
@@ -11,8 +11,9 @@ use App\Services\HusmodataService;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Hash;
 
-class DataController extends Controller
+class DataController extends AtomicController
 {
     protected $husmodataService;
 
@@ -55,9 +56,27 @@ class DataController extends Controller
         $request->validate([
             'plan_id' => 'required|exists:data_plans,id',
             'phone_number' => 'required|string|regex:/^[0-9]{11}$/',
+            'pin' => 'required|string|size:4',
+            'request_id' => 'required|string|min:20',
         ]);
 
         $user = $request->user();
+
+        // Deduplication check
+        if ($this->isDuplicateRequest($request->request_id, $user->id, 'api_data_purchase')) {
+            return response()->json(['message' => 'Duplicate request detected.'], 400);
+        }
+
+        // Rate limiting
+        if ($this->isRateLimited($user->id, 'api_data_purchase')) {
+            return response()->json(['message' => 'Too many requests. Please wait.'], 429);
+        }
+
+        // Verify PIN
+        if (!Hash::check($request->pin, $user->pin)) {
+            return response()->json(['message' => 'Invalid transaction PIN.'], 403);
+        }
+
         $plan = DataPlan::with('network')->findOrFail($request->plan_id);
 
         // Check if the plan is active
@@ -67,96 +86,82 @@ class DataController extends Controller
             ], 400);
         }
 
-        // Check if user has enough balance
-        if ($user->wallet_balance < $plan->selling_price) {
-            return response()->json([
-                'message' => 'Insufficient wallet balance. Please fund your wallet.',
-            ], 400);
-        }
-
-        // Generate unique reference
-        $reference = 'DATA' . strtoupper(Str::random(8));
-
-        // Use database transaction to ensure data consistency
         try {
-            DB::beginTransaction();
+            $result = $this->processAtomicTransaction($user->id, $plan->selling_price, function ($lockedUser) use ($request, $plan) {
+                // Generate unique reference
+                $reference = 'DATA' . strtoupper(Str::random(8)) . time();
 
-            // Create transaction record
-            $transaction = Transaction::create([
-                'user_id' => $user->id,
-                'reference' => $reference,
-                'type' => 'data',
-                'amount' => $plan->selling_price,
-                'fee' => 0,
-                'status' => 'pending',
-                'recipient' => $request->phone_number,
-                'description' => $plan->network->name . ' ' . $plan->name . ' Data Purchase to ' . $request->phone_number,
-                'metadata' => [
-                    'network' => $plan->network->name,
-                    'network_code' => $plan->network->code,
-                    'plan_name' => $plan->name,
-                    'plan_code' => $plan->code,
-                    'plan_type' => $plan->plan_type,
-                    'dataplan_id' => $plan->dataplan_id,
-                    'phone_number' => $request->phone_number,
+                // Create transaction record
+                $transaction = Transaction::create([
+                    'user_id' => $lockedUser->id,
+                    'reference' => $reference,
+                    'type' => 'data',
                     'amount' => $plan->selling_price,
-                ],
-            ]);
-
-            // Deduct from user's wallet
-            $user->wallet_balance -= $plan->selling_price;
-            $user->save();
-
-            DB::commit();
-
-            $response = $this->husmodataService->buyData(
-                $request->phone_number,
-                $plan->network->code,
-                $plan->dataplan_id ?? $plan->code,
-                $reference,
-                false
-            );
-
-            if ($response['success']) {
-                // Update transaction status
-                $transaction->status = 'successful';
-                $transaction->save();
-
-                return response()->json([
-                    'message' => 'Data purchase successful!',
-                    'transaction' => $transaction,
+                    'fee' => 0,
+                    'status' => 'pending',
+                    'recipient' => $request->phone_number,
+                    'description' => $plan->network->name . ' ' . $plan->name . ' Data Purchase to ' . $request->phone_number,
+                    'metadata' => [
+                        'network' => $plan->network->name,
+                        'network_code' => $plan->network->code,
+                        'plan_name' => $plan->name,
+                        'plan_code' => $plan->code,
+                        'plan_type' => $plan->plan_type,
+                        'dataplan_id' => $plan->dataplan_id,
+                        'phone_number' => $request->phone_number,
+                        'amount' => $plan->selling_price,
+                        'request_id' => $request->request_id,
+                        'channel' => 'api',
+                    ],
                 ]);
-            } else {
-                // If failed, refund the user
-                DB::beginTransaction();
 
-                $user->refresh(); // Get the latest user data
-                $user->wallet_balance += $plan->selling_price;
-                $user->save();
+                // Deduct from user's wallet
+                $this->deductWallet($lockedUser, $plan->selling_price, 'API data purchase');
 
-                // Update transaction status
-                $transaction->status = 'failed';
-                $transaction->metadata = array_merge($transaction->metadata ?? [], [
-                    'error_message' => $response['message'] ?? 'Unknown error'
-                ]);
-                $transaction->save();
+                // Call external service
+                $response = $this->husmodataService->buyData(
+                    $request->phone_number,
+                    $plan->network->code,
+                    $plan->dataplan_id ?? $plan->code,
+                    $reference,
+                    false
+                );
 
-                DB::commit();
+                if ($response['success']) {
+                    // Update transaction status
+                    $transaction->status = 'successful';
+                    $transaction->save();
 
-                return response()->json([
-                    'message' => 'Data purchase failed: ' . ($response['message'] ?? 'Unknown error'),
-                    'transaction' => $transaction,
-                ], 400);
-            }
+                    return [
+                        'success' => true,
+                        'message' => 'Data purchase successful!',
+                        'transaction' => $transaction,
+                    ];
+                } else {
+                    // If failed, refund the user
+                    $lockedUser->wallet_balance += $plan->selling_price;
+                    $lockedUser->save();
+
+                    // Update transaction status
+                    $transaction->status = 'failed';
+                    $transaction->metadata = array_merge($transaction->metadata ?? [], [
+                        'error_message' => $response['message'] ?? 'Unknown error'
+                    ]);
+                    $transaction->save();
+
+                    throw new \Exception($response['message'] ?? 'Data purchase failed at provider.');
+                }
+            });
+
+            return response()->json($result);
+
         } catch (\Exception $e) {
-            DB::rollBack();
-
             // Log the error
-            Log::error('Data purchase error: ' . $e->getMessage());
+            Log::error('API Data purchase error: ' . $e->getMessage());
 
             return response()->json([
-                'message' => 'An error occurred while processing your request. Please try again later.',
-            ], 500);
+                'message' => $e->getMessage(),
+            ], 400);
         }
     }
 }

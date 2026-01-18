@@ -15,7 +15,7 @@ return new class extends Migration
             // Add column to track if transaction was triggered by card linking
             $table->boolean('is_card_link_transaction')->default(false)->after('type');
             // Add foreign key to user_cards for transaction reference
-            $table->foreignId('card_id')->nullable()->constrained('user_cards')->onDelete('set null')->after('is_card_link_transaction');
+            // $table->foreignId('card_id')->nullable()->constrained('user_cards')->onDelete('set null')->after('is_card_link_transaction');
         });
     }
 

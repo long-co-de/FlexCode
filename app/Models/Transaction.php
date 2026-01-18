@@ -15,6 +15,7 @@ class Transaction extends Model
         'type', // airtime, data, cable, electricity, wallet_funding
         'amount',
         'fee',
+        'profit',
         'status', // pending, success, failed
         'recipient',
         'description',

@@ -2,14 +2,15 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Http\Controllers\Controller;
+use App\Http\Controllers\AtomicController;
 use Illuminate\Http\Request;
 use App\Models\ElectricityProvider;
 use App\Models\Transaction;
 use App\Services\DatavendroService;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Hash;
 
-class ElectricityController extends Controller
+class ElectricityController extends AtomicController
 {
     protected $datavendroService;
 
@@ -82,86 +83,110 @@ class ElectricityController extends Controller
             'customer_name' => 'required|string',
             'customer_address' => 'nullable|string',
             'phone_number' => 'required|string',
+            'pin' => 'required|string|size:4',
+            'request_id' => 'required|string|min:20',
         ]);
 
         $user = $request->user();
+
+        // Deduplication check
+        if ($this->isDuplicateRequest($request->request_id, $user->id, 'api_electricity_purchase')) {
+            return response()->json(['message' => 'Duplicate request detected.'], 400);
+        }
+
+        // Rate limiting
+        if ($this->isRateLimited($user->id, 'api_electricity_purchase')) {
+            return response()->json(['message' => 'Too many requests. Please wait.'], 429);
+        }
+
+        // Verify PIN
+        if (!Hash::check($request->pin, $user->pin)) {
+            return response()->json(['message' => 'Invalid transaction PIN.'], 403);
+        }
+
         $provider = ElectricityProvider::findOrFail($request->provider_id);
 
         // Calculate service fee (if any)
         $serviceFee = $provider->service_fee ?? 0;
         $totalAmount = $request->amount + $serviceFee;
 
-        // Check if user has enough balance
-        if ($user->wallet_balance < $totalAmount) {
+        try {
+            $result = $this->processAtomicTransaction($user->id, $totalAmount, function ($lockedUser) use ($request, $provider, $totalAmount, $serviceFee) {
+                // Generate unique reference
+                $reference = 'ELEC' . strtoupper(Str::random(8)) . time();
+
+                // Create transaction record
+                $transaction = Transaction::create([
+                    'user_id' => $lockedUser->id,
+                    'reference' => $reference,
+                    'type' => 'electricity',
+                    'amount' => $request->amount,
+                    'fee' => $serviceFee,
+                    'status' => 'pending',
+                    'recipient' => $request->meter_number,
+                    'description' => $provider->name . ' Electricity Bill Payment of ₦' . $request->amount . ' for ' . $request->customer_name,
+                    'meta_data' => [
+                        'provider' => $provider->name,
+                        'provider_code' => $provider->code,
+                        'meter_number' => $request->meter_number,
+                        'meter_type' => $request->meter_type,
+                        'customer_name' => $request->customer_name,
+                        'customer_address' => $request->customer_address,
+                        'phone_number' => $request->phone_number,
+                        'amount' => $request->amount,
+                        'service_fee' => $serviceFee,
+                        'total_amount' => $totalAmount,
+                        'request_id' => $request->request_id,
+                        'channel' => 'api',
+                    ],
+                ]);
+
+                // Deduct from user's wallet
+                $this->deductWallet($lockedUser, $totalAmount, 'API electricity purchase');
+
+                $response = $this->datavendroService->payElectricityBill(
+                    $request->meter_number,
+                    $provider->code,
+                    $request->amount,
+                    $request->meter_type
+                );
+
+                if ($response['success']) {
+                    // Update transaction status and token
+                    $transaction->status = 'successful';
+                    $transaction->meta_data = array_merge($transaction->meta_data, [
+                        'token' => $response['data']['token'] ?? null,
+                        'units' => $response['data']['units'] ?? null,
+                    ]);
+                    $transaction->save();
+
+                    return [
+                        'success' => true,
+                        'message' => 'Electricity bill payment successful!',
+                        'transaction' => $transaction,
+                        'token' => $response['data']['token'] ?? null,
+                    ];
+                } else {
+                    // If failed, refund the user
+                    $lockedUser->wallet_balance += $totalAmount;
+                    $lockedUser->save();
+
+                    // Update transaction status
+                    $transaction->status = 'failed';
+                    $transaction->meta_data = array_merge($transaction->meta_data ?? [], [
+                        'error' => $response['message'] ?? 'Unknown error'
+                    ]);
+                    $transaction->save();
+
+                    throw new \Exception($response['message'] ?? 'Electricity bill payment failed at provider.');
+                }
+            });
+
+            return response()->json($result);
+
+        } catch (\Exception $e) {
             return response()->json([
-                'message' => 'Insufficient wallet balance. Please fund your wallet.',
-            ], 400);
-        }
-
-        // Generate unique reference
-        $reference = 'ELEC' . strtoupper(Str::random(8));
-
-        // Create transaction record
-        $transaction = Transaction::create([
-            'user_id' => $user->id,
-            'reference' => $reference,
-            'type' => 'electricity',
-            'amount' => $request->amount,
-            'fee' => $serviceFee,
-            'status' => 'pending',
-            'recipient' => $request->meter_number,
-            'description' => $provider->name . ' Electricity Bill Payment of ₦' . $request->amount . ' for ' . $request->customer_name,
-            'meta_data' => [
-                'provider' => $provider->name,
-                'provider_code' => $provider->code,
-                'meter_number' => $request->meter_number,
-                'meter_type' => $request->meter_type,
-                'customer_name' => $request->customer_name,
-                'customer_address' => $request->customer_address,
-                'phone_number' => $request->phone_number,
-                'amount' => $request->amount,
-                'service_fee' => $serviceFee,
-                'total_amount' => $totalAmount,
-            ],
-        ]);
-
-        // Deduct from user's wallet
-        $user->wallet_balance -= $totalAmount;
-        $user->save();
-
-        $response = $this->datavendroService->payElectricityBill(
-            $request->meter_number,
-            $provider->code,
-            $request->amount,
-            $request->meter_type
-        );
-
-        if ($response['success']) {
-            // Update transaction status and token
-            $transaction->status = 'successful';
-            $transaction->meta_data = array_merge($transaction->meta_data, [
-                'token' => $response['data']['token'] ?? null,
-                'units' => $response['data']['units'] ?? null,
-            ]);
-            $transaction->save();
-
-            return response()->json([
-                'message' => 'Electricity bill payment successful!',
-                'transaction' => $transaction,
-                'token' => $response['data']['token'] ?? null,
-            ]);
-        } else {
-            // If failed, refund the user
-            $user->wallet_balance += $totalAmount;
-            $user->save();
-
-            // Update transaction status
-            $transaction->status = 'failed';
-            $transaction->save();
-
-            return response()->json([
-                'message' => 'Electricity bill payment failed: ' . ($response['message'] ?? 'Unknown error'),
-                'transaction' => $transaction,
+                'message' => $e->getMessage(),
             ], 400);
         }
     }

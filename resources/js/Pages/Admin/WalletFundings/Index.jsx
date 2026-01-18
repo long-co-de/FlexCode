@@ -11,12 +11,20 @@ export default function Index({ walletFundings, stats, filters, paymentMethods }
                 <div className="max-w-7xl mx-auto sm:px-6 lg:px-8">
                     <div className="flex justify-between items-center mb-6">
                         <h1 className="text-2xl font-semibold igg-900">Wallet Fundings</h1>
-                        <Link
-                            href={route('admin.wallet-fundings.manual-funding')}
-                            className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                        >
-                            Manual Fund User
-                        </Link>
+                        <div className="flex gap-3">
+                            <Link
+                                href={route('admin.wallet-fundings.payment-retrieval')}
+                                className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+                            >
+                                Verify Payment
+                            </Link>
+                            <Link
+                                href={route('admin.wallet-fundings.manual-funding')}
+                                className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                            >
+                                Manual Fund User
+                            </Link>
+                        </div>
                     </div>
                     
                     {/* Stats Cards */}

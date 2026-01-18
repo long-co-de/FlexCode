@@ -423,14 +423,14 @@ class HusmodataService
 
             return [
                 'success' => false,
-                'message' => $response->json()['message'] ?? 'to many request at the moment, please try again later.',
+                'message' => $response->json()['message'] ?? 'Just a quick breather - please try again in a few seconds',
                 'status_code' => $response->status(),
             ];
         } catch (Exception $e) {
             Log::error('Husmodata API Error: ' . $e->getMessage());
             return [
                 'success' => false,
-                'message' => '  to many request at the moment, please try again later' . $e->getMessage(),
+                'message' => '  Just a quick breather - please try again in a few seconds' ,
             ];
         }
     }

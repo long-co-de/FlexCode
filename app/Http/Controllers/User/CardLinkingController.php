@@ -2,8 +2,9 @@
 
 namespace App\Http\Controllers\User;
 
-use App\Http\Controllers\Controller;
+use App\Http\Controllers\AtomicController;
 use App\Models\UserCard;
+use App\Models\User;
 use App\Services\PaystackService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -12,7 +13,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
 
-class CardLinkingController extends Controller
+class CardLinkingController extends AtomicController
 {
     protected $paystackService;
 
@@ -53,16 +54,30 @@ class CardLinkingController extends Controller
         $validated = $request->validate([
             'reference' => 'required|string',
             'status' => 'required|string',
+            'request_id' => 'nullable|string',
         ]);
+
+        // **SECURITY FIX 1: Deduplication**
+        $requestId = $request->request_id ?: $this->generateRequestId($user->id);
+        if ($this->isDuplicateRequest($requestId, $user->id, 'card_linking')) {
+            return response()->json([
+                'success' => false,
+                'message' => 'This request is already being processed.',
+            ], 400);
+        }
 
         try {
             // Start transaction for atomicity
             DB::beginTransaction();
 
+            // **SECURITY FIX 2: Lock user row**
+            $lockedUser = User::where('id', $user->id)->lockForUpdate()->firstOrFail();
+
             // Verify the transaction with Paystack
             $verification = $this->paystackService->verifyTransaction($validated['reference']);
 
             if (!$verification['success']) {
+                DB::rollBack();
                 return response()->json([
                     'success' => false,
                     'message' => 'Payment verification failed. Please contact support.',
@@ -73,6 +88,7 @@ class CardLinkingController extends Controller
 
             // Ensure payment was successful
             if ($paymentData['status'] !== 'success') {
+                DB::rollBack();
                 return response()->json([
                     'success' => false,
                     'message' => 'Payment was not completed successfully.',
@@ -83,6 +99,7 @@ class CardLinkingController extends Controller
             $authorization = $paymentData['authorization'] ?? null;
 
             if (!$authorization) {
+                DB::rollBack();
                 Log::error('No authorization data in Paystack response', [
                     'reference' => $validated['reference'],
                     'payment_data' => $paymentData,
@@ -96,6 +113,7 @@ class CardLinkingController extends Controller
 
             // Verify authorization is reusable
             if (!($authorization['reusable'] ?? false)) {
+                DB::rollBack();
                 return response()->json([
                     'success' => false,
                     'message' => 'This card type is not supported for borrowing.',
@@ -105,14 +123,15 @@ class CardLinkingController extends Controller
             // Check if card is already registered to another user (prevent card reuse across accounts)
             $authCode = $authorization['authorization_code'] ?? '';
             $cardUsedByAnotherUser = UserCard::where('authorization_code', $authCode)
-                ->where('user_id', '!=', $user->id)
+                ->where('user_id', '!=', $lockedUser->id)
                 ->where('is_active', true)
+                ->lockForUpdate() // Lock existing card check too
                 ->first();
 
             if ($cardUsedByAnotherUser) {
                 DB::rollBack();
                 Log::warning('Card reuse attempt detected', [
-                    'user_id' => $user->id,
+                    'user_id' => $lockedUser->id,
                     'existing_user_id' => $cardUsedByAnotherUser->user_id,
                     'authorization_code' => $authCode,
                 ]);
@@ -123,8 +142,9 @@ class CardLinkingController extends Controller
             }
 
             // Check if card already exists for this user
-            $existingCard = UserCard::where('user_id', $user->id)
+            $existingCard = UserCard::where('user_id', $lockedUser->id)
                 ->where('authorization_code', $authCode)
+                ->lockForUpdate()
                 ->first();
 
             if ($existingCard) {
@@ -141,27 +161,27 @@ class CardLinkingController extends Controller
                         'metadata' => array_merge($existingCard->metadata ?? [], [
                             'reactivated_at' => now()->toDateTimeString(),
                             'payment_reference' => $paymentData['id'] ?? '',
+                            'request_id' => $requestId,
                         ]),
                     ]);
                     $card = $existingCard;
                 }
             } else {
                 // Create new card record
-                $isFirstCard = !$user->cards()->exists();
+                $isFirstCard = !$lockedUser->cards()->exists();
 
-                // Generate a unique card token if not provided by Paystack
-                // Use authorization_code as base since it's unique per card
+                // Generate a unique card token
                 $cardToken = $authorization['card_token'] ?? null;
                 if (!$cardToken || empty($cardToken)) {
-                    $cardToken = hash('sha256', $user->id . '|' . ($authorization['authorization_code'] ?? '') . '|' . time());
+                    $cardToken = hash('sha256', $lockedUser->id . '|' . ($authorization['authorization_code'] ?? '') . '|' . time());
                 }
 
                 $card = UserCard::create([
-                    'user_id' => $user->id,
+                    'user_id' => $lockedUser->id,
                     'card_type' => $authorization['card_type'] ?? 'unknown',
                     'last_four' => $authorization['last4'] ?? '',
                     'authorization_code' => $authorization['authorization_code'] ?? '',
-                    'email' => $user->email,
+                    'email' => $lockedUser->email,
                     'bank' => $authorization['bank'] ?? 'Unknown Bank',
                     'bin' => $authorization['bin'] ?? '',
                     'exp_month' => $authorization['exp_month'] ?? '',
@@ -176,34 +196,40 @@ class CardLinkingController extends Controller
                         'payment_reference' => $paymentData['id'] ?? '',
                         'customer_id' => $paymentData['customer']['id'] ?? null,
                         'paystack_auth_code' => $authorization['authorization_code'] ?? '',
+                        'request_id' => $requestId,
                     ],
                 ]);
 
                 // Credit user ₦50 if it's their first card linked
                 if ($isFirstCard) {
-                    $user->increment('wallet_balance', 50);
+                    $this->creditWallet($lockedUser, 50, 'Card Linking Bonus');
+                    
                     \App\Models\Transaction::create([
-                        'user_id' => $user->id,
-                        'type' => 'wallet_credit',
+                        'user_id' => $lockedUser->id,
+                        'type' => 'commission', // Using commission type for bonuses
                         'amount' => 50,
-                        'reference' => 'CARD_LINK_BONUS_' . Str::random(8),
-                        'status' => 'success',
-                        'description' => 'Card linking bonus credit',
-                        'metadata' => ['reason' => 'first_card_linked'],
+                        'reference' => 'CARD_LINK_BONUS_' . Str::random(8) . time(),
+                        'status' => 'successful',
+                        'description' => 'First card linking bonus credit',
+                        'meta_data' => [
+                            'reason' => 'first_card_linked',
+                            'card_id' => $card->id,
+                            'request_id' => $requestId,
+                        ],
                     ]);
                 }
             }
 
             // Process refund of verification charge (₦100)
-            $this->processVerificationRefund($user, $paymentData);
+            $this->processVerificationRefund($lockedUser, $paymentData);
 
             // Recalculate borrowing eligibility
-            $this->recalculateEligibility($user);
+            $this->recalculateEligibility($lockedUser);
 
             DB::commit();
 
             Log::info('Card linked successfully', [
-                'user_id' => $user->id,
+                'user_id' => $lockedUser->id,
                 'card_id' => $card->id,
                 'last_four' => $card->last_four,
             ]);
@@ -225,7 +251,7 @@ class CardLinkingController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'An error occurred while linking your card. Please try again.',
+                'message' => 'An error occurred: ' . $e->getMessage(),
             ], 500);
         }
     }

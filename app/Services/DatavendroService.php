@@ -89,6 +89,49 @@ class DatavendroService
         }
     }
 
+    public function getDiscoId($discoName)
+    {
+        $disco = strtolower($discoName);
+        // Mapping disco names to their IDs as per Datavendro API
+        $discoMap = [
+            'ikedc' => 1,
+            'ikeja' => 1,
+            'ikeja-electric' => 1,
+            'ekedc' => 2,
+            'eko' => 2,
+            'eko-electric' => 2,
+            'aedc' => 3,
+            'abuja' => 3,
+            'abuja-electric' => 3,
+            'kedc' => 4,
+            'kano' => 4,
+            'kano-electric' => 4,
+            'eedc' => 5,
+            'enugu' => 5,
+            'enugu-electric' => 5,
+            'phedc' => 6,
+            'portharcourt' => 6,
+            'port-harcourt' => 6,
+            'ibedc' => 7,
+            'ibadan' => 7,
+            'ibadan-electric' => 7,
+            'kadc' => 8,
+            'kaduna' => 8,
+            'kaduna-electric' => 8,
+            'jedc' => 9,
+            'jos' => 9,
+            'jos-electric' => 9,
+            'bedc' => 10,
+            'benin' => 10,
+            'benin-electric' => 10,
+            'yedc' => 12,
+            'yola' => 12,
+            'yola-electric' => 12,
+        ];
+
+        return $discoMap[$disco] ?? 1; // Default to Ikeja Electric if not found
+    }
+
     public function buyAirtime($phone, $network, $amount, $reference, $airtimeType = 'VTU', $ported = false)
     {
         $networkId = $this->getNetWorkId($network);
@@ -274,13 +317,14 @@ class DatavendroService
     public function payElectricityBill($meterNumber, $discoName, $amount, $meterType)
     {
         try {
-            $meterTypeId = (strtolower($meterType) === 'prepaid') ? 1 : 2;
+            $meterTypeValue = (strtolower($meterType) === 'prepaid') ? '1' : '2';
+            $discoId = $this->getDiscoId($discoName);
 
             $payload = [
-                'disco_name' => $discoName,
+                'disco_name' => $discoId,
                 'amount' => $amount,
                 'meter_number' => $meterNumber,
-                'MeterType' => $meterTypeId
+                'MeterType' => $meterTypeValue
             ];
             Log::info('Datavendro payElectricityBill Request', $payload);
             $response = $this->request()->post($this->apiUrl . '/billpayment/', $payload);

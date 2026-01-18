@@ -2,23 +2,23 @@
 
 namespace App\Http\Controllers\User;
 
-use App\Http\Controllers\Controller;
+use App\Http\Controllers\AtomicController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Models\WalletFunding;
 use App\Models\PaymentMethod;
 use App\Models\Setting;
-use App\Services\MonnifyService;
 use App\Services\PaystackService;
-use App\Services\XixatPayService;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Symfony\Component\Uid\Ulid;
 
-class WalletController extends Controller
+class WalletController extends AtomicController
 {
     /**
      * Display the wallet page.
@@ -31,9 +31,9 @@ class WalletController extends Controller
         // Get all active payment methods
         $allPaymentMethods = PaymentMethod::where('is_active', true)->get();
 
-        // Filter payment methods - Paystack and Monnify only for online payments
+        // Filter payment methods - Paystack only for online payments
         $paymentMethods = $allPaymentMethods->map(function ($method) {
-            if (in_array(strtolower($method->name), ['paystack', 'monnify'])) {
+            if (in_array(strtolower($method->name), ['paystack'])) {
                 $method->category = 'online_payment';
             } else {
                 $method->category = 'bank_transfer';
@@ -72,18 +72,18 @@ class WalletController extends Controller
             $user->save();
         }
 
-        // Get payment charges
+        // Get payment charges - updated to new rules
         $paymentCharges = [
-            'virtual_bank_deposit_charge' => (float) Setting::get('virtual_bank_deposit_charge', 0),
-            'card_payment_charge' => (float) Setting::get('card_payment_charge', 0),
-            'online_payment_charge' => (float) Setting::get('online_payment_charge', 0),
+            'virtual_bank_deposit_charge' => 1.5,
+            'card_payment_charge' => 1.5,
+            'online_payment_charge' => 1.5,
         ];
 
         return Inertia::render('User/Wallet', [
             'paymentMethods' => $paymentMethods,
             'recentTransactions' => $recentTransactions,
             'walletStats' => $walletStats,
-            'virtualAccounts' => $user->virtual_account_details,
+            'virtualAccounts' => array_values($user->virtual_account_details ?? []),
             'paymentCharges' => $paymentCharges,
             'has_card' => $user->cards()->exists(),
         ]);
@@ -165,10 +165,10 @@ class WalletController extends Controller
 
         // Process payment based on the payment method
         if ($paymentMethod->code === 'paystack') {
-            $monnifyService = app(PaystackService::class);
+            $paystackService = app(PaystackService::class);
             $paymentDescription = ['message' => 'Wallet Funding of ₦' . $request->amount];
             $redirectUrl = route('wallet.verify', ['reference' => $reference, 'gateway' => 'paystack']);
-            $response = $monnifyService->initializeTransaction(
+            $response = $paystackService->initializeTransaction(
                 $request->amount,
                 $user->email,
                 $reference,
@@ -178,7 +178,7 @@ class WalletController extends Controller
             );
             // \Log::info('Paystack Reference:', ['reference' => json_encode($response)]);
 
-            // $response = $monnifyService->initializeTransaction($request->)
+            // $response = $paystackService->initializeTransaction($request->)
             if ($response['success']) {
                 // Store checkout URL in wallet funding response data
                 $walletFunding->response_data = array_merge($walletFunding->response_data ?? [], [
@@ -186,7 +186,7 @@ class WalletController extends Controller
                 ]);
                 $walletFunding->save();
 
-                // Redirect to Monnify checkout page
+                // Redirect to Paystack checkout page
                 return back()->withErrors(['url' => $response['data']['authorization_url']]);
             } else {
                 return redirect()->route('wallet')->with('error', 'Failed to initialize payment: ' . ($response['message'] ?? 'Unknown error'));
@@ -250,113 +250,132 @@ class WalletController extends Controller
             return redirect()->route('wallet')->with('error', 'Invalid payment reference');
         }
 
-        $walletFunding = WalletFunding::where('reference', $reference)->first();
+        // Cache lock based on reference to prevent concurrent verification
+        $lock = \Illuminate\Support\Facades\Cache::lock('payment_verification:' . $reference, 30);
 
-        if (!$walletFunding) {
-            return redirect()->route('wallet')->with('error', 'Invalid payment reference');
+        if (!$lock->get()) {
+            return redirect()->route('wallet')->with('error', 'Payment verification is already in progress. Please wait.');
         }
 
-        // If already processed, return success
-        if ($walletFunding->status === 'successful') {
-            return redirect()->route('wallet')->with('success', 'Payment was successful');
-        }
+        try {
+            return DB::transaction(function () use ($reference, $gateway) {
+                $walletFunding = WalletFunding::where('reference', $reference)
+                    ->lockForUpdate()
+                    ->first();
 
-        // Verify payment based on the gateway
-        if ($gateway === 'paystack') {
-            $monnifyService = app(PaystackService::class);
-            $response = $monnifyService->verifyTransaction($reference);
-        } else {
-            return redirect()->route('wallet')->with('error', 'Invalid payment gateway');
-        }
-
-        if ($response['success']) {
-            $paymentStatus = $response['status'];
-
-            if ($paymentStatus === 'successful') {
-                // Update wallet funding status
-                $walletFunding->status = 'successful';
-
-                // Calculate fee based on charge percentage
-                $chargePercentage = $walletFunding->response_data['charge_percentage'] ?? Setting::get('online_payment_charge', 3);
-                $fee = ($walletFunding->amount * $chargePercentage) / 100;
-                $walletFunding->fee = $fee;
-                // response_data is already cast to array by the model, so no need to json_decode
-                $walletFunding->response_data = array_merge($walletFunding->response_data ?? [], [
-                    'completed_at' => now(),
-                    'payment_reference' => $response['data']['transactionReference'] ?? $response['data']['id'] ?? '',
-                    'payment_method' => $response['data']['paymentMethod'] ?? $gateway,
-                    'payment_details' => $response['data'],
-                    'fee' => $fee,
-                    'net_amount' => $walletFunding->amount - $fee,
-                ]);
-                $walletFunding->save();
-
-                // Update transaction status
-                $transaction = Transaction::where('reference', $reference)->first();
-                if ($transaction) {
-                    $transaction->status = 'successful';
-                    $transaction->fee = $fee;
-                    $transaction->save();
+                if (!$walletFunding) {
+                    throw new \Exception('Invalid payment reference');
                 }
 
-                // Update user's wallet balance (deduct the fee)
-                $user = User::find($walletFunding->user_id);
-                if ($user) {
-                    $netAmount = $walletFunding->amount - $fee;
-                    
-                    // Settle outstanding debts first
-                    $borrowingService = app(\App\Services\BorrowingService::class);
-                    $remainingAmount = $borrowingService->settleDebts($user, $netAmount);
-                    
-                    if ($remainingAmount < $netAmount) {
-                        $settledAmount = $netAmount - $remainingAmount;
-                        $notificationService = app(\App\Services\NotificationService::class);
-                        $notificationService->sendSystemNotification(
-                            $user,
-                            'Debt Automatically Settled',
-                            "₦{$settledAmount} has been deducted from your funding to settle your outstanding debt.",
-                            'info'
-                        );
-                    }
-                    
-                    $user->wallet_balance += $remainingAmount;
-                    $user->save();
+                // If already processed, return success
+                if ($walletFunding->status === 'successful') {
+                    return redirect()->route('wallet')->with('success', 'Payment was successful');
+                }
 
-                    // Send notification about the fee
-                    if ($fee > 0) {
-                        $notificationService = app(\App\Services\NotificationService::class);
-                        $notificationService->sendSystemNotification(
-                            $user,
-                            'Wallet Funding Fee Applied',
-                            "A service fee of ₦{$fee} ({$chargePercentage}%) has been deducted from your wallet funding of ₦{$walletFunding->amount}. Net amount credited: ₦{$netAmount}.",
-                            'info'
-                        );
-                    }
+                // Verify payment based on the gateway
+                if ($gateway === 'paystack') {
+                    $paystackService = app(PaystackService::class);
+                    $response = $paystackService->verifyTransaction($reference);
+                } else {
+                    throw new \Exception('Invalid payment gateway');
+                }
 
-                    // Process referral bonus (4% for referrer on referred user's first deposit)
-                    $referralService = app(\App\Services\ReferralService::class);
-                    if ($referralService->processReferralBonus($transaction)) {
-                        $referrer = User::find($user->referred_by);
-                        if ($referrer) {
-                            $notificationService = app(\App\Services\NotificationService::class);
-                            $notificationService->sendSystemNotification(
-                                $referrer,
-                                'Referral Bonus Earned',
-                                "You earned ₦{$referralService->getBonusAmount($transaction->amount)} (4% commission) from {$user->name}'s first deposit.",
-                                'success'
-                            );
+                if ($response['success']) {
+                    $paymentStatus = $response['status'];
+
+                    if ($paymentStatus === 'successful') {
+                        // Update wallet funding status
+                        $walletFunding->status = 'successful';
+
+                        // Calculate fee based on new rules: 1.5% + 100 for 2000 and above
+                        $amount = $walletFunding->amount;
+                        $fee = ($amount * 1.5) / 100;
+                        if ($amount >= 2000) {
+                            $fee += 100;
                         }
-                    }
-                }
+                        $walletFunding->fee = $fee;
 
-                return redirect()->route('wallet')->with('success', 'Payment was successful. Your wallet has been funded with ₦' . $walletFunding->amount);
-            } elseif ($paymentStatus === 'pending') {
-                return redirect()->route('wallet')->with('info', 'Your payment is still being processed. We will notify you once it is completed.');
-            } else {
-                return redirect()->route('wallet')->with('error', 'Payment failed. Please try again.');
+                        $walletFunding->response_data = array_merge($walletFunding->response_data ?? [], [
+                            'completed_at' => now(),
+                            'payment_reference' => $response['data']['transactionReference'] ?? $response['data']['id'] ?? '',
+                            'payment_method' => $response['data']['paymentMethod'] ?? $gateway,
+                            'payment_details' => $response['data'],
+                            'fee' => $fee,
+                            'net_amount' => $amount - $fee,
+                        ]);
+                        $walletFunding->save();
+
+                        // Update transaction status
+                        $transaction = Transaction::where('reference', $reference)->lockForUpdate()->first();
+                        if ($transaction) {
+                            $transaction->status = 'successful';
+                            $transaction->fee = $fee;
+                            $transaction->save();
+                        }
+
+                        // Update user's wallet balance (deduct the fee)
+                        $user = User::where('id', $walletFunding->user_id)->lockForUpdate()->first();
+                        if ($user) {
+                            $netAmount = $walletFunding->amount - $fee;
+
+                            // Settle outstanding debts first
+                            $borrowingService = app(\App\Services\BorrowingService::class);
+                            $remainingAmount = $borrowingService->settleDebts($user, $netAmount);
+
+                            if ($remainingAmount < $netAmount) {
+                                $settledAmount = $netAmount - $remainingAmount;
+                                $notificationService = app(\App\Services\NotificationService::class);
+                                $notificationService->sendSystemNotification(
+                                    $user,
+                                    'Debt Automatically Settled',
+                                    "₦{$settledAmount} has been deducted from your funding to settle your outstanding debt.",
+                                    'info'
+                                );
+                            }
+
+                            $user->wallet_balance += $remainingAmount;
+                            $user->save();
+
+                            // Send notification about the fee
+                            if ($fee > 0) {
+                                $notificationService = app(\App\Services\NotificationService::class);
+                                $chargePercent = ($fee / $walletFunding->amount) * 100;
+                                $notificationService->sendSystemNotification(
+                                    $user,
+                                    'Wallet Funding Fee Applied',
+                                    "A service fee of ₦{$fee} (" . number_format($chargePercent, 2) . "%) has been deducted from your wallet funding of ₦{$walletFunding->amount}. Net amount credited: ₦{$netAmount}.",
+                                    'info'
+                                );
+                            }
+
+                            // Process referral bonus
+                            $referralService = app(\App\Services\ReferralService::class);
+                            if ($transaction) {
+                                $referralService->processReferralBonus($transaction);
+                            }
+                        }
+
+                        return redirect()->route('wallet')->with('success', 'Wallet funded successfully with ₦' . number_format($netAmount, 2));
+                    } elseif ($paymentStatus === 'pending') {
+                        return redirect()->route('wallet')->with('info', 'Your payment is still being processed. We will notify you once it is completed.');
+                    } else {
+                        return redirect()->route('wallet')->with('error', 'Payment failed. Please try again.');
+                    }
+                } else {
+                    return redirect()->route('wallet')->with('error', 'Failed to verify payment: ' . ($response['message'] ?? 'Unknown error'));
+                }
+            });
+        } catch (\Exception $e) {
+            \Log::error('Payment verification failed', [
+                'reference' => $reference,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            return redirect()->route('wallet')->with('error', 'An error occurred during payment verification: ' . $e->getMessage());
+        } finally {
+            if (isset($lock)) {
+                $lock->release();
             }
-        } else {
-            return redirect()->route('wallet')->with('error', 'Failed to verify payment: ' . ($response['message'] ?? 'Unknown error'));
         }
     }
 
@@ -369,34 +388,46 @@ class WalletController extends Controller
     public function createVirtualAccount(Request $request)
     {
         $user = $request->user();
-        $provider = 'xixatpay'; // Only using XixaPay as the provider
+        $provider = 'paystack';
 
-        // Check if user already has a virtual account with XixaPay
+        // Check if user has phone number - required by Paystack
+        if (empty($user->phone_number)) {
+            return redirect()->route('profile.edit')->with('error', 'Please update your phone number in your profile before creating a dedicated bank account.');
+        }
+        Log::info('Creating virtual account for user ID: ' . json_encode($user));
+
+        // Check if user already has a virtual account with Paystack
         if (!empty($user->virtual_account_details[$provider])) {
-            return redirect()->route('wallet')->with('info', 'You already have a  dedicated bank account.');
+            return redirect()->route('wallet')->with('info', 'You already have a dedicated bank account.');
         }
 
-        // Create virtual account with XixaPay
-        $xixatPayService = app(XixatPayService::class);
-        $response = $xixatPayService->createVirtualAccount($user);
+        // Create virtual account with Paystack
+        $paystackService = app(PaystackService::class);
+        $response = $paystackService->createDedicatedAccount($user);
 
         if ($response['success']) {
             // Store virtual account details in user's profile
             $virtualAccounts = $user->virtual_account_details ?? [];
+            $data = $response['data'];
+
             $virtualAccounts[$provider] = [
-                'bank_name' => $response['data']['bank_name'],
-                'account_number' => $response['data']['account_number'],
-                'account_name' => $response['data']['account_name'],
-                'reference' => $response['data']['reference'],
-                'customer_id' => $response['data']['customer_id'],
-                'all_accounts' => $response['data']['all_accounts'],
+                'bank_name' => $data['bank']['name'] ?? 'Paystack Bank',
+                'account_number' => $data['account_number'],
+                'account_name' => $data['account_name'],
+                'reference' => $data['customer']['customer_code'] ?? '',
+                'customer_id' => $data['customer']['id'] ?? '',
+                'all_accounts' => $data,
             ];
             $user->virtual_account_details = $virtualAccounts;
             $user->save();
 
-            return redirect()->route('wallet')->with('success', '  dedicated bank account created successfully.');
+            return redirect()->route('wallet')->with('success', 'Dedicated bank account created successfully.');
         } else {
-            return redirect()->route('wallet')->with('error', $response['message'] . 'Make Sure your email and phone number are valid');
+            // If error is about phone number, redirect to profile update
+            if (str_contains($response['message'], 'phone')) {
+                return redirect()->route('profile.edit')->with('error', 'Please update your phone number in your profile before creating a dedicated bank account.');
+            }
+            return redirect()->route('wallet')->with('error', $response['message'] . '. Make sure your email and phone number are valid.');
         }
     }
 
@@ -407,11 +438,12 @@ class WalletController extends Controller
      */
     public function showTransferPage()
     {
+        return back()->with('info', 'Wallet transfer feature is currently under maintenance. Please try again later.');
         return Inertia::render('User/WalletTransfer');
     }
 
     /**
-     * Process wallet transfer to another user.
+     * Process wallet transfer to another user with atomic transaction safety.
      *
      * @param  \Illuminate\Http\Request  $request
      * @return \Illuminate\Http\RedirectResponse
@@ -420,11 +452,23 @@ class WalletController extends Controller
     {
         $request->validate([
             'recipient_phone' => 'required|string|exists:users,phone_number',
-            'amount' => 'required|numeric|min:100',
+            'amount' => 'required|numeric|min:100|max:1000000',
             'pin' => 'required|string|size:4',
+            'request_id' => 'required|string|min:20|max:100',
         ]);
+        return back()->with('info', 'Wallet transfer feature is currently under maintenance. Please try again later.');
 
         $user = $request->user();
+
+        // **SECURITY FIX 1: Check for duplicate request (prevents replay attacks)**
+        if ($this->isDuplicateRequest($request->request_id, $user->id, 'wallet_transfer')) {
+            return redirect()->back()->with('error', 'This transfer request was already processed. Please check your transaction history.');
+        }
+
+        // **SECURITY FIX 2: Rate limiting (prevents rapid-fire transactions)**
+        if ($this->isRateLimited($user->id, 'wallet_transfer', maxAttempts: 5, decaySeconds: 60)) {
+            return redirect()->back()->with('error', 'Too many transfer attempts. Please wait before trying again.');
+        }
 
         // Verify PIN
         if (!Hash::check($request->pin, $user->pin)) {
@@ -438,56 +482,114 @@ class WalletController extends Controller
             return redirect()->back()->with('error', 'You cannot transfer to yourself.');
         }
 
-        // Check if user has enough balance
-        if ($user->wallet_balance < $request->amount) {
-            return redirect()->back()->with('error', 'Insufficient wallet balance.');
+        // **SECURITY FIX 3: Use atomic transaction with row locking**
+        try {
+            $result = $this->processAtomicTransaction($user->id, $request->amount, function ($lockedUser) use ($request, $recipient) {
+
+                // Re-verify PIN within transaction (defense against timing attacks)
+                if (!Hash::check($request->pin, $lockedUser->pin)) {
+                    throw new \Exception('Invalid PIN. Please try again.');
+                }
+
+                // Check recipient's wallet limit
+                $maxWalletBalance = (float) Setting::get('max_wallet_balance', 1000000);
+                if (($recipient->wallet_balance + $request->amount) > $maxWalletBalance) {
+                    throw new \Exception('Recipient has reached maximum wallet limit.');
+                }
+
+                // Generate unique reference with timestamp
+                $reference = 'TRAN' . strtoupper(Str::random(8)) . time();
+
+                // Create transaction record for sender
+                $senderTransaction = Transaction::create([
+                    'user_id' => $lockedUser->id,
+                    'reference' => $reference . '-S',
+                    'type' => 'wallet_transfer',
+                    'amount' => $request->amount,
+                    'fee' => 0,
+                    'status' => 'successful',
+                    'recipient' => $recipient->phone_number,
+                    'description' => 'Wallet Transfer of ₦' . $request->amount . ' to ' . $recipient->name,
+                    'meta_data' => [
+                        'recipient_id' => $recipient->id,
+                        'recipient_name' => $recipient->name,
+                        'recipient_phone' => $recipient->phone_number,
+                        'request_id' => $request->request_id,
+                        'ip_address' => $request->ip(),
+                        'user_agent' => substr($request->userAgent(), 0, 255),
+                    ],
+                ]);
+
+                // Create transaction record for recipient
+                $recipientTransaction = Transaction::create([
+                    'user_id' => $recipient->id,
+                    'reference' => $reference . '-R',
+                    'type' => 'wallet_transfer',
+                    'amount' => $request->amount,
+                    'fee' => 0,
+                    'status' => 'successful',
+                    'recipient' => $recipient->phone_number,
+                    'description' => 'Wallet Transfer of ₦' . $request->amount . ' from ' . $lockedUser->name,
+                    'meta_data' => [
+                        'sender_id' => $lockedUser->id,
+                        'sender_name' => $lockedUser->name,
+                        'sender_phone' => $lockedUser->phone_number,
+                        'request_id' => $request->request_id,
+                        'related_transaction' => $senderTransaction->id,
+                    ],
+                ]);
+
+                // **SECURITY FIX 4: Update balances atomically within transaction**
+                // Deduct from sender
+                $this->deductWallet($lockedUser, $request->amount, 'wallet transfer');
+
+                // Credit to recipient (also acquire lock on recipient)
+                DB::table('users')
+                    ->where('id', $recipient->id)
+                    ->lockForUpdate()
+                    ->increment('wallet_balance', $request->amount);
+
+                // Log transaction for audit trail
+                $this->logAtomicTransaction($lockedUser->id, 'wallet_transfer', $request->amount, $request->request_id, [
+                    'recipient_id' => $recipient->id,
+                    'reference' => $reference,
+                ]);
+
+                return [
+                    'transaction' => $senderTransaction,
+                    'recipient' => $recipient,
+                    'reference' => $reference,
+                ];
+            });
+
+            // Send notifications outside of transaction lock
+            $notificationService = app(\App\Services\NotificationService::class);
+            $notificationService->sendSystemNotification(
+                $user,
+                'Transfer Successful',
+                "You have successfully transferred ₦{$request->amount} to {$result['recipient']->name}.",
+                'success'
+            );
+
+            $notificationService->sendSystemNotification(
+                $result['recipient'],
+                'Wallet Credited',
+                "You have received ₦{$request->amount} from {$user->name}.",
+                'info'
+            );
+
+            return redirect()->route('wallet')->with('success', 'Wallet transfer of ₦' . $request->amount . ' to ' . $result['recipient']->name . ' was successful.');
+        } catch (\Exception $e) {
+            \Log::error('Wallet transfer failed: ' . $e->getMessage(), [
+                'user_id' => $user->id,
+                'recipient_phone' => $request->recipient_phone,
+                'amount' => $request->amount,
+                'request_id' => $request->request_id,
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return redirect()->back()->with('error', $e->getMessage());
         }
-
-        // Generate unique reference
-        $reference = 'TRAN' . strtoupper(Str::random(8));
-
-        // Create transaction record for sender
-        $senderTransaction = Transaction::create([
-            'user_id' => $user->id,
-            'reference' => $reference . '-S',
-            'type' => 'wallet_transfer',
-            'amount' => $request->amount,
-            'fee' => 0,
-            'status' => 'successful',
-            'recipient' => $recipient->phone_number,
-            'description' => 'Wallet Transfer of ₦' . $request->amount . ' to ' . $recipient->name,
-            'meta_data' => [
-                'recipient_id' => $recipient->id,
-                'recipient_name' => $recipient->name,
-                'recipient_phone' => $recipient->phone_number,
-            ],
-        ]);
-
-        // Create transaction record for recipient
-        $recipientTransaction = Transaction::create([
-            'user_id' => $recipient->id,
-            'reference' => $reference,
-            'type' => 'wallet_transfer',
-            'amount' => $request->amount,
-            'fee' => 0,
-            'status' => 'successful',
-            'recipient' => $recipient->phone_number,
-            'description' => 'Wallet Transfer of ₦' . $request->amount . ' from ' . $user->name,
-            'meta_data' => [
-                'sender_id' => $user->id,
-                'sender_name' => $user->name,
-                'sender_phone' => $user->phone_number,
-            ],
-        ]);
-
-        // Update wallet balances
-        $user->wallet_balance -= $request->amount;
-        $user->save();
-
-        $recipient->wallet_balance += $request->amount;
-        $recipient->save();
-
-        return redirect()->route('wallet')->with('success', 'Wallet transfer of ₦' . $request->amount . ' to ' . $recipient->name . ' was successful.');
     }
 
     /**
@@ -505,40 +607,62 @@ class WalletController extends Controller
             'bank_name' => 'required|string',
             'account_number' => 'required|string|size:10',
             'account_name' => 'required|string',
+            'pin' => 'required|string|size:4',
+            'request_id' => 'nullable|string',
         ]);
 
         $user = $request->user();
 
-        // Check if user has enough balance
-        if ($user->wallet_balance < $request->amount) {
-            return redirect()->back()->with('error', 'Insufficient wallet balance.');
+        // **SECURITY FIX 1: Check for duplicate request**
+        $requestId = $request->request_id ?: $this->generateRequestId($user->id);
+        if ($this->isDuplicateRequest($requestId, $user->id, 'withdrawal')) {
+            return redirect()->back()->with('error', 'This withdrawal request is already being processed. Please wait.');
         }
 
-        // Generate unique reference
-        $reference = 'WITH' . strtoupper(Str::random(8));
+        // **SECURITY FIX 2: Rate limiting**
+        if ($this->isRateLimited($user->id, 'withdrawal')) {
+            return redirect()->back()->with('error', 'Too many withdrawal attempts. Please wait before trying again.');
+        }
 
-        // Create transaction record
-        $transaction = Transaction::create([
-            'user_id' => $user->id,
-            'reference' => $reference,
-            'type' => 'withdrawal',
-            'amount' => $request->amount,
-            'fee' => 0,
-            'status' => 'pending',
-            'recipient' => $request->account_number,
-            'description' => 'Withdrawal of ₦' . $request->amount . ' to ' . $request->bank_name . ' - ' . $request->account_name,
-            'meta_data' => [
-                'bank_name' => $request->bank_name,
-                'account_number' => $request->account_number,
-                'account_name' => $request->account_name,
-            ],
-        ]);
+        // Verify PIN
+        if (!Hash::check($request->pin, $user->pin)) {
+            return redirect()->back()->withErrors(['pin' => 'Invalid PIN. Please try again.']);
+        }
 
-        // Deduct from user's wallet
-        $user->wallet_balance -= $request->amount;
-        $user->save();
+        try {
+            $this->processAtomicTransaction($user->id, $request->amount, function ($lockedUser) use ($request, $requestId) {
 
-        return redirect()->route('wallet')->with('success', 'Withdrawal request of ₦' . $request->amount . ' has been submitted and is being processed.');
+                // Generate unique reference
+                $reference = 'WITH' . strtoupper(Str::random(10)) . time();
+
+                // Create transaction record
+                Transaction::create([
+                    'user_id' => $lockedUser->id,
+                    'reference' => $reference,
+                    'type' => 'withdrawal',
+                    'amount' => $request->amount,
+                    'fee' => 0,
+                    'status' => 'pending',
+                    'recipient' => $request->account_number,
+                    'description' => 'Withdrawal of ₦' . $request->amount . ' to ' . $request->bank_name . ' - ' . $request->account_name,
+                    'meta_data' => [
+                        'bank_name' => $request->bank_name,
+                        'account_number' => $request->account_number,
+                        'account_name' => $request->account_name,
+                        'request_id' => $requestId,
+                    ],
+                ]);
+
+                // Deduct from wallet
+                $this->deductWallet($lockedUser, $request->amount, 'withdrawal');
+
+                return true;
+            });
+
+            return redirect()->route('wallet')->with('success', 'Withdrawal request of ₦' . $request->amount . ' has been submitted and is being processed.');
+        } catch (\Exception $e) {
+            return redirect()->back()->with('error', $e->getMessage());
+        }
     }
 
     /**

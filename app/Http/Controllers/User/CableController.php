@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers\User;
 
-use App\Http\Controllers\Controller;
+use App\Http\Controllers\AtomicController;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use App\Models\CableProvider;
@@ -13,8 +13,10 @@ use App\Services\DatavendroService;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use App\Models\User;
 
-class CableController extends Controller
+class CableController extends AtomicController
 {
     protected $datavendroService;
 
@@ -117,9 +119,21 @@ class CableController extends Controller
             'save_as_beneficiary' => 'nullable|boolean',
             'beneficiary_name' => 'nullable|required_if:save_as_beneficiary,true|string|max:255',
             'beneficiary_id' => 'nullable|exists:beneficiaries,id',
+            'request_id' => 'nullable|string',
         ]);
 
         $user = $request->user();
+
+        // **SECURITY FIX 1: Check for duplicate request**
+        $requestId = $request->request_id ?: $this->generateRequestId($user->id);
+        if ($this->isDuplicateRequest($requestId, $user->id, 'cable_purchase')) {
+            return redirect()->back()->with('error', 'This request is already being processed. Please wait.');
+        }
+
+        // **SECURITY FIX 2: Rate limiting**
+        if ($this->isRateLimited($user->id, 'cable_purchase')) {
+            return redirect()->back()->with('error', 'Too many attempts. Please wait before trying again.');
+        }
 
         // Verify PIN
         if (!Hash::check($request->pin, $user->pin)) {
@@ -131,100 +145,91 @@ class CableController extends Controller
             ->where('id', $request->cable_plan_id)
             ->firstOrFail();
 
-        // Check if user has enough balance
-        if ($user->wallet_balance < $cablePlan->selling_price) {
-            return redirect()->back()->with('error', 'Insufficient wallet balance. Please fund your wallet.');
-        }
+        try {
+            $result = $this->processAtomicTransaction($user->id, $cablePlan->selling_price, function ($lockedUser) use ($request, $provider, $cablePlan, $requestId) {
+                
+                $reference = 'CABLE' . strtoupper(Str::random(10)) . time();
+                $profit = $this->calculateProfitMargin($cablePlan->selling_price);
 
-        // Generate unique reference
-        $reference = 'CABLE' . strtoupper(Str::random(8));
-
-        // Create transaction record
-        $transaction = Transaction::create([
-            'user_id' => $user->id,
-            'reference' => $reference,
-            'type' => 'cable',
-            'amount' => $cablePlan->selling_price,
-            'fee' => 0,
-            'status' => 'pending',
-            'recipient' => $request->smart_card_number,
-            'description' => $provider->name . ' ' . $cablePlan->name . ' Subscription for ' . $request->customer_name,
-            'meta_data' => [
-                'provider' => $provider->name,
-                'provider_code' => $provider->code,
-                'smart_card_number' => $request->smart_card_number,
-                'customer_name' => $request->customer_name,
-                'plan_name' => $cablePlan->name,
-                'plan_code' => $cablePlan->code,
-                'validity' => $cablePlan->validity,
-                'amount_paid' => $cablePlan->selling_price,
-            ],
-        ]);
-
-        // Deduct from user's wallet
-        $user->wallet_balance -= $cablePlan->selling_price;
-        $user->save();
-
-        $response = $this->datavendroService->subscribeCable(
-            $request->smart_card_number,
-            $provider->code,
-            $cablePlan->code
-        );
-
-        if ($response['success']) {
-            // Update transaction status
-            $transaction->status = 'successful';
-            $transaction->meta_data = array_merge($transaction->meta_data ?? [], [
-                'api_response' => $response['data'] ?? [],
-            ]);
-            $transaction->save();
-
-            // Save as beneficiary if requested
-            if ($request->save_as_beneficiary && !$request->beneficiary_id) {
-                Beneficiary::create([
-                    'user_id' => $user->id,
-                    'name' => $request->beneficiary_name,
-                    'smart_card_number' => $request->smart_card_number,
-                    'service_type' => 'cable',
-                    'cable_provider_id' => $provider->id,
-                    'is_favorite' => false,
+                $transaction = Transaction::create([
+                    'user_id' => $lockedUser->id,
+                    'reference' => $reference,
+                    'type' => 'cable',
+                    'amount' => $cablePlan->selling_price,
+                    'fee' => 0,
+                    'profit' => $profit,
+                    'status' => 'pending',
+                    'recipient' => $request->smart_card_number,
+                    'description' => $provider->name . ' ' . $cablePlan->name . ' Subscription for ' . $request->customer_name,
                     'meta_data' => [
+                        'provider' => $provider->name,
+                        'provider_code' => $provider->code,
+                        'smart_card_number' => $request->smart_card_number,
                         'customer_name' => $request->customer_name,
-                        'last_plan_id' => $cablePlan->id,
-                        'last_plan_name' => $cablePlan->name,
+                        'plan_name' => $cablePlan->name,
+                        'plan_code' => $cablePlan->code,
+                        'validity' => $cablePlan->validity,
+                        'amount_paid' => $cablePlan->selling_price,
+                        'request_id' => $requestId,
                     ],
                 ]);
+
+                // Deduct from wallet
+                $this->deductWallet($lockedUser, $cablePlan->selling_price, 'cable subscription');
+
+                return $transaction;
+            });
+
+            $transaction = $result;
+
+            $response = $this->datavendroService->subscribeCable(
+                $request->smart_card_number,
+                $provider->code,
+                $cablePlan->code
+            );
+
+            if ($response['success']) {
+                $transaction->status = 'successful';
+                $transaction->meta_data = array_merge($transaction->meta_data ?? [], [
+                    'api_response' => $response['data'] ?? [],
+                    'completed_at' => now(),
+                ]);
+                $transaction->save();
+
+                if ($request->save_as_beneficiary && !$request->beneficiary_id) {
+                    Beneficiary::create([
+                        'user_id' => $user->id,
+                        'name' => $request->beneficiary_name,
+                        'smart_card_number' => $request->smart_card_number,
+                        'service_type' => 'cable',
+                        'cable_provider_id' => $provider->id,
+                        'is_favorite' => false,
+                        'meta_data' => [
+                            'customer_name' => $request->customer_name,
+                            'last_plan_id' => $cablePlan->id,
+                            'last_plan_name' => $cablePlan->name,
+                        ],
+                    ]);
+                }
+
+                return redirect()->route('dashboard')->with('success', 'Cable subscription successful!');
+            } else {
+                // API failed, refund the user using atomic helper
+                $this->failAndRefund($transaction, $user->id, $cablePlan->selling_price, $response);
+
+                return redirect()->back()->with('error', $response['message'] ?? 'Cable subscription failed. Your money has been refunded.');
             }
 
-            return redirect()->route('dashboard')->with('success', 'Cable subscription successful!');
-        } else {
-            // If failed, refund the user
-            $user->wallet_balance += $cablePlan->selling_price;
-            $user->save();
-
-            // Update transaction status
-            $transaction->status = 'failed';
-            $transaction->meta_data = array_merge($transaction->meta_data ?? [], [
-                'api_error' => $response['message'] ?? 'Payment failed',
-                'api_raw' => $response['data'] ?? null,
-            ]);
-            $transaction->save();
-
-            return redirect()->back()->with('error', $response['message'] ?? 'Cable subscription failed. Please try again later.');
+        } catch (\Exception $e) {
+            return redirect()->back()->with('error', $e->getMessage());
         }
     }
 
-    protected function calculateProfitMargin($amount)
+    protected function calculateProfitMargin($amount,$type=null)
     {
-        $user = Auth::user();
-        $settings = Setting::first();
-
-        // Apply pro user profit margin if user is pro
-        if ($user->is_pro && $user->pro_expires_at > now()) {
-            return $amount * ($settings->pro_cable_profit_percentage / 100);
-        }
+       
 
         // Otherwise use regular profit margin
-        return parent::calculateProfitMargin($amount);
+        return parent::calculateProfitMargin($amount, 'cable');
     }
 }

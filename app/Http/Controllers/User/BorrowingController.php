@@ -2,7 +2,7 @@
 // File: BorrowingController.php
 namespace App\Http\Controllers\User;
 
-use App\Http\Controllers\Controller;
+use App\Http\Controllers\AtomicController;
 use App\Models\Borrowing;
 use App\Models\BorrowingEligibility;
 use App\Services\BorrowingService;
@@ -11,7 +11,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
 
-class BorrowingController extends Controller
+class BorrowingController extends AtomicController
 {
     protected $borrowingService;
     protected $eligibilityService;
@@ -110,6 +110,10 @@ class BorrowingController extends Controller
      */
     public function repay(Request $request, Borrowing $borrowing)
     {
+        $request->validate([
+            'request_id' => 'nullable|string',
+        ]);
+
         $user = Auth::user();
 
         if ($borrowing->user_id !== $user->id) {
@@ -119,20 +123,36 @@ class BorrowingController extends Controller
             ], 403);
         }
 
-        if ($borrowing->status === 'paid') {
+        // Deduplication check
+        if ($request->request_id && $this->isDuplicateRequest($request->request_id, $user->id, 'borrowing_repay')) {
             return response()->json([
                 'success' => false,
-                'message' => 'This borrowing is already paid'
+                'message' => 'This request has already been processed.'
             ], 400);
         }
 
         try {
-            $repayment = $this->borrowingService->processRepayment($borrowing);
+            // Use atomic transaction to lock user and prevent race conditions
+            // Even if it charges a card, we want to ensure no other transaction 
+            // is modifying this user's debt/wallet state simultaneously.
+            $result = $this->processAtomicTransaction($user->id, 0, function ($lockedUser) use ($borrowing) {
+                // Re-verify status within transaction
+                $borrowing = Borrowing::where('id', $borrowing->id)
+                    ->where('status', '!=', 'paid')
+                    ->lockForUpdate()
+                    ->first();
+
+                if (!$borrowing) {
+                    throw new \Exception('This borrowing is already paid or not found.');
+                }
+
+                return $this->borrowingService->processRepayment($borrowing);
+            });
 
             return response()->json([
                 'success' => true,
                 'message' => 'Repayment successful',
-                'data' => $repayment
+                'data' => $result
             ]);
         } catch (\Exception $e) {
             return response()->json([
@@ -147,12 +167,28 @@ class BorrowingController extends Controller
      */
     public function repayAll(Request $request)
     {
+        $request->validate([
+            'request_id' => 'nullable|string',
+        ]);
+
         $user = Auth::user();
 
+        // Rate limiting
+        if ($this->isRateLimited($user->id, 'repay_all', 3, 60)) {
+            return back()->with('error', 'Too many repayment attempts. Please try again in a minute.');
+        }
+
+        // Deduplication check
+        if ($request->request_id && $this->isDuplicateRequest($request->request_id, $user->id, 'borrowing_repay_all')) {
+            return back()->with('error', 'This request has already been processed.');
+        }
+
         try {
-            // Attempt to charge the default linked card first
-            // If no card or card fails, automatically falls back to wallet
-            $totalSettled = $this->borrowingService->repayAllFromCard($user);
+            // RepayAllFromCard handles its own transaction and wallet fallback
+            // But we lock the user here to prevent concurrent repayAll attempts
+            $totalSettled = $this->processAtomicTransaction($user->id, 0, function ($lockedUser) {
+                return $this->borrowingService->repayAllFromCard($lockedUser);
+            });
 
             return back()->with('success', "Successfully settled debt totaling ₦" . number_format($totalSettled, 2));
         } catch (\Exception $e) {

@@ -132,7 +132,7 @@ class XixatPayService
     }
 
     /**
-     * Process successful payment webhook
+     * Process successful payment webhook with atomic safety
      *
      * @param array $data
      * @return array
@@ -154,118 +154,153 @@ class XixatPayService
             ];
         }
 
-        // Find the user by customer_id or by account details
-        $user = null;
+        $lock = \Illuminate\Support\Facades\Cache::lock('xixapay_webhook:' . $transactionId, 30);
         
-        // Try to find user by XixaPay customer_id stored in virtual_account_details
-        $user = User::whereRaw("JSON_CONTAINS(virtual_account_details, '{\"customer_id\": \"$customerId\"}', '$.xixatpay')")->first();
-        
-        if (!$user) {
-            // Try to find by account number
-            $receiverAccountNumber = $data['receiver']['account_number'] ?? '';
-            if ($receiverAccountNumber) {
-                $user = User::whereRaw("JSON_CONTAINS(virtual_account_details, '{\"account_number\": \"$receiverAccountNumber\"}', '$.xixatpay')")->first();
-            }
-        }
-
-        if (!$user) {
+        if (!$lock->get()) {
             return [
                 'success' => false,
-                'message' => 'User not found for this transaction',
+                'message' => 'Transaction is currently being processed',
             ];
         }
 
-        // Create a reference for our system
-        $reference = 'XIXAPAY_' . $transactionId;
+        try {
+            return \Illuminate\Support\Facades\DB::transaction(function () use ($data, $transactionId, $amount, $settlementAmount, $settlementFee, $customerId, $timestamp) {
+                // Find the user by customer_id or by account details
+                $user = null;
+                
+                // Try to find user by XixaPay customer_id stored in virtual_account_details
+                $user = User::whereRaw("JSON_CONTAINS(virtual_account_details, '{\"customer_id\": \"$customerId\"}', '$.xixatpay')")
+                    ->lockForUpdate()
+                    ->first();
+                
+                if (!$user) {
+                    // Try to find by account number
+                    $receiverAccountNumber = $data['receiver']['account_number'] ?? '';
+                    if ($receiverAccountNumber) {
+                        $user = User::whereRaw("JSON_CONTAINS(virtual_account_details, '{\"account_number\": \"$receiverAccountNumber\"}', '$.xixatpay')")
+                            ->lockForUpdate()
+                            ->first();
+                    }
+                }
 
-        // Check if this transaction has already been processed
-        $existingTransaction = Transaction::where('meta_data->payment_reference', $transactionId)->first();
-        if ($existingTransaction) {
+                if (!$user) {
+                    return [
+                        'success' => false,
+                        'message' => 'User not found for this transaction',
+                    ];
+                }
+
+                // Check if this transaction has already been processed
+                $existingTransaction = Transaction::where('meta_data->payment_reference', $transactionId)
+                    ->lockForUpdate()
+                    ->first();
+                    
+                if ($existingTransaction) {
+                    return [
+                        'success' => true,
+                        'message' => 'Transaction already processed',
+                    ];
+                }
+
+                // Create a reference for our system
+                $reference = 'XIXAPAY_' . $transactionId;
+
+                // Calculate charge percentage based on settings
+                $chargePercentage = (float) Setting::get('virtual_bank_deposit_charge', 0);
+                
+                // Create wallet funding record
+                $walletFunding = WalletFunding::create([
+                    'user_id' => $user->id,
+                    'reference' => $reference,
+                    'amount' => $amount,
+                    'payment_method' => 'Xixat Pay Dedicated Bank Account',
+                    'status' => 'successful',
+                    'fee' => $settlementFee,
+                    'meta_data' => [
+                        'payment_reference' => $transactionId,
+                        'payment_method' => 'virtual_account',
+                        'payment_provider' => 'xixatpay',
+                        'charge_percentage' => $chargePercentage,
+                        'original_amount' => $amount,
+                        'settlement_amount' => $settlementAmount,
+                        'settlement_fee' => $settlementFee,
+                        'sender' => $data['sender'] ?? [],
+                        'receiver' => $data['receiver'] ?? [],
+                        'timestamp' => $timestamp,
+                        'completed_at' => now(),
+                    ],
+                ]);
+
+                // Create transaction record
+                $transaction = Transaction::create([
+                    'user_id' => $user->id,
+                    'reference' => $reference,
+                    'type' => 'wallet_funding',
+                    'amount' => $amount,
+                    'fee' => $settlementFee,
+                    'status' => 'successful',
+                    'recipient' => $user->email,
+                    'description' => 'Wallet Funding of ₦' . $amount . ' via Xixat Pay Dedicated Bank Account',
+                    'meta_data' => [
+                        'payment_method' => 'Xixat Pay Dedicated Bank Account',
+                        'wallet_funding_id' => $walletFunding->id,
+                        'payment_reference' => $transactionId,
+                        'charge_percentage' => $chargePercentage,
+                    ],
+                ]);
+
+                // Update user's wallet balance
+                $netAmount = $settlementAmount;
+                
+                // Settle outstanding debts first
+                $borrowingService = app(\App\Services\BorrowingService::class);
+                $remainingAmount = $borrowingService->settleDebts($user, $netAmount);
+                
+                if ($remainingAmount < $netAmount) {
+                    $settledAmount = $netAmount - $remainingAmount;
+                    $notificationService = app(\App\Services\NotificationService::class);
+                    $notificationService->sendSystemNotification(
+                        $user,
+                        'Debt Automatically Settled',
+                        "₦{$settledAmount} has been deducted from your virtual account deposit to settle your outstanding debt.",
+                        'info'
+                    );
+                }
+                
+                $user->wallet_balance += $remainingAmount;
+                $user->save();
+
+                // Send notification about the fee if needed
+                if ($settlementFee > 0) {
+                    $notificationService = app(\App\Services\NotificationService::class);
+                    $notificationService->sendSystemNotification(
+                        $user,
+                        'Wallet Funding Fee Applied',
+                        "A service fee of ₦{$settlementFee} has been deducted from your wallet funding of ₦{$amount}. Net amount credited: ₦{$settlementAmount}.",
+                        'info'
+                    );
+                }
+
+                // Process referral bonus
+                $referralService = app(\App\Services\ReferralService::class);
+                $referralService->processReferralBonus($transaction);
+
+                return [
+                    'success' => true,
+                    'message' => 'Transaction processed successfully',
+                ];
+            });
+        } catch (\Exception $e) {
+            Log::error('XixaPay processSuccessfulPayment failed: ' . $e->getMessage(), [
+                'transaction_id' => $transactionId,
+                'trace' => $e->getTraceAsString()
+            ]);
             return [
-                'success' => true,
-                'message' => 'Transaction already processed',
+                'success' => false,
+                'message' => 'Internal error: ' . $e->getMessage(),
             ];
+        } finally {
+            $lock->release();
         }
-
-        // Calculate charge percentage based on settings
-        $chargePercentage = (float) Setting::get('virtual_bank_deposit_charge', 0);
-        
-        // Create wallet funding record
-        $walletFunding = WalletFunding::create([
-            'user_id' => $user->id,
-            'reference' => $reference,
-            'amount' => $amount,
-            'payment_method' => 'Xixat Pay Dedicated Bank Account',
-            'status' => 'successful',
-            'fee' => $settlementFee,
-            'meta_data' => [
-                'payment_reference' => $transactionId,
-                'payment_method' => 'virtual_account',
-                'payment_provider' => 'xixatpay',
-                'charge_percentage' => $chargePercentage,
-                'original_amount' => $amount,
-                'settlement_amount' => $settlementAmount,
-                'settlement_fee' => $settlementFee,
-                'sender' => $data['sender'] ?? [],
-                'receiver' => $data['receiver'] ?? [],
-                'timestamp' => $timestamp,
-                'completed_at' => now(),
-            ],
-        ]);
-
-        // Create transaction record
-        $transaction = Transaction::create([
-            'user_id' => $user->id,
-            'reference' => $reference,
-            'type' => 'wallet_funding',
-            'amount' => $amount,
-            'fee' => $settlementFee,
-            'status' => 'successful',
-            'recipient' => $user->email,
-            'description' => 'Wallet Funding of ₦' . $amount . ' via Xixat Pay Dedicated Bank Account',
-            'meta_data' => [
-                'payment_method' => 'Xixat Pay Dedicated Bank Account',
-                'wallet_funding_id' => $walletFunding->id,
-                'payment_reference' => $transactionId,
-                'charge_percentage' => $chargePercentage,
-            ],
-        ]);
-
-        // Update user's wallet balance
-        $netAmount = $settlementAmount;
-        
-        // Settle outstanding debts first
-        $borrowingService = app(\App\Services\BorrowingService::class);
-        $remainingAmount = $borrowingService->settleDebts($user, $netAmount);
-        
-        if ($remainingAmount < $netAmount) {
-            $settledAmount = $netAmount - $remainingAmount;
-            $notificationService = app(NotificationService::class);
-            $notificationService->sendSystemNotification(
-                $user,
-                'Debt Automatically Settled',
-                "₦{$settledAmount} has been deducted from your virtual account deposit to settle your outstanding debt.",
-                'info'
-            );
-        }
-        
-        $user->wallet_balance += $remainingAmount;
-        $user->save();
-
-        // Send notification about the fee if needed
-        if ($settlementFee > 0) {
-            $notificationService = app(NotificationService::class);
-            $notificationService->sendSystemNotification(
-                $user,
-                'Wallet Funding Fee Applied',
-                "A service fee of ₦{$settlementFee} has been deducted from your wallet funding of ₦{$amount}. Net amount credited: ₦{$settlementAmount}.",
-                'info'
-            );
-        }
-
-        return [
-            'success' => true,
-            'message' => 'Transaction processed successfully',
-        ];
     }
 }

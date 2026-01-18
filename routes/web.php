@@ -144,11 +144,15 @@ Route::middleware(['auth', 'verified', \App\Http\Middleware\CheckActive::class])
 
             // Airtime
             Route::get('/airtime', [AirtimeController::class, 'index'])->name('airtime');
-            Route::post('/airtime/purchase', [AirtimeController::class, 'purchase'])->name('airtime.purchase');
+            Route::post('/airtime/purchase', [AirtimeController::class, 'purchase'])
+                ->middleware(\App\Http\Middleware\PreventRapidTransactions::class . ':airtime')
+                ->name('airtime.purchase');
 
             // Data
             Route::get('/data', [DataController::class, 'index'])->name('data');
-            Route::post('/data/purchase', [DataController::class, 'purchase'])->name('data.purchase');
+            Route::post('/data/purchase', [DataController::class, 'purchase'])
+                ->middleware(\App\Http\Middleware\PreventRapidTransactions::class . ':data')
+                ->name('data.purchase');
             Route::get('/data/plans/{network}', [DataController::class, 'getPlans'])->name('data.plans');
 
             // Cable TV
@@ -168,8 +172,16 @@ Route::middleware(['auth', 'verified', \App\Http\Middleware\CheckActive::class])
             Route::get('/wallet/verify', [WalletController::class, 'verifyPayment'])->name('wallet.verify');
             Route::get('/wallet/virtual-account', [WalletController::class, 'createVirtualAccount'])->name('wallet.virtual-account');
             Route::get('/wallet/transfer', [WalletController::class, 'showTransferPage'])->name('wallet.transfer.show');
-            Route::post('/wallet/transfer', [WalletController::class, 'transfer'])->name('wallet.transfer');
-            Route::post('/wallet/withdraw', [WalletController::class, 'withdraw'])->name('wallet.withdraw');
+            
+            // **SECURITY: Apply rate limiting and atomic transaction protection to financial operations**
+            Route::post('/wallet/transfer', [WalletController::class, 'transfer'])
+                ->middleware(\App\Http\Middleware\PreventRapidTransactions::class . ':wallet')
+                ->name('wallet.transfer');
+            
+            Route::post('/wallet/withdraw', [WalletController::class, 'withdraw'])
+                ->middleware(\App\Http\Middleware\PreventRapidTransactions::class . ':wallet')
+                ->name('wallet.withdraw');
+                
             Route::get('/wallet/history', [WalletController::class, 'history'])->name('wallet.history');
 
             // Referral Program
@@ -377,6 +389,8 @@ Route::middleware(['auth', 'verified', \App\Http\Middleware\CheckActive::class])
             Route::get('/wallet-fundings', [\App\Http\Controllers\Admin\WalletFundingController::class, 'index'])->name('wallet-fundings');
             Route::get('/wallet-fundings/manual-funding', [\App\Http\Controllers\Admin\WalletFundingController::class, 'showManualFundingForm'])->name('wallet-fundings.manual-funding');
             Route::post('/wallet-fundings/manual-funding', [\App\Http\Controllers\Admin\WalletFundingController::class, 'manualFunding'])->name('wallet-fundings.manual-funding.store');
+            Route::get('/wallet-fundings/payment-retrieval', [\App\Http\Controllers\Admin\WalletFundingController::class, 'showPaymentRetrievalForm'])->name('wallet-fundings.payment-retrieval');
+            Route::post('/wallet-fundings/verify-payment', [\App\Http\Controllers\Admin\WalletFundingController::class, 'verifyAndRetrievePayment'])->name('wallet-fundings.verify-payment');
 
             // Borrow Settings Management
             Route::resource('borrow-settings', \App\Http\Controllers\Admin\BorrowSettingController::class)->names('borrow-settings');
@@ -387,6 +401,7 @@ Route::middleware(['auth', 'verified', \App\Http\Middleware\CheckActive::class])
                 Route::get('/{borrowing}', [\App\Http\Controllers\Admin\BorrowingController::class, 'show'])->name('show');
                 Route::post('/{borrowing}/trigger-repayment', [\App\Http\Controllers\Admin\BorrowingController::class, 'triggerRepayment'])->name('trigger-repayment');
                 Route::post('/{borrowing}/mark-as-paid', [\App\Http\Controllers\Admin\BorrowingController::class, 'markAsPaid'])->name('mark-as-paid');
+                Route::post('/{borrowing}/process-payment', [\App\Http\Controllers\Admin\BorrowingController::class, 'processPayment'])->name('process-payment');
                 Route::post('/{borrowing}/cancel', [\App\Http\Controllers\Admin\BorrowingController::class, 'cancel'])->name('cancel');
             });
 

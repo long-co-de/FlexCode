@@ -74,6 +74,7 @@ class Kernel extends HttpKernel
         'pin.verify' => \App\Http\Middleware\VerifyPin::class,
         'pin.api_verify' => \App\Http\Middleware\VerifyApiPin::class,
         'active' => \App\Http\Middleware\CheckActive::class,
+        'rapid.transactions' => \App\Http\Middleware\PreventRapidTransactions::class,
     ];
     protected function schedule(Schedule $schedule)
     {

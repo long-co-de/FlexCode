@@ -2,7 +2,7 @@
 // File: BorrowingElectricityController.php
 namespace App\Http\Controllers\User;
 
-use App\Http\Controllers\Controller;
+use App\Http\Controllers\AtomicController;
 use App\Models\ElectricityProvider;
 use App\Models\Borrowing;
 use App\Models\BorrowingEligibility;
@@ -14,7 +14,7 @@ use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\Auth;
 
-class BorrowingElectricityController extends Controller
+class BorrowingElectricityController extends AtomicController
 {
     protected $borrowingService;
     protected $eligibilityService;
@@ -149,9 +149,20 @@ class BorrowingElectricityController extends Controller
             'save_as_beneficiary' => 'nullable|boolean',
             'beneficiary_name' => 'nullable|string|max:255',
             'pin' => 'required|string|size:4',
+            'request_id' => 'nullable|string',
         ]);
 
         $user = Auth::user();
+
+        // Rate limiting
+        if ($this->isRateLimited($user->id, 'borrow_electricity')) {
+            return redirect()->back()->with('error', 'Too many requests. Please try again in a minute.');
+        }
+
+        // Deduplication check
+        if ($request->request_id && $this->isDuplicateRequest($request->request_id, $user->id, 'borrow_electricity')) {
+            return redirect()->back()->with('error', 'This request has already been processed.');
+        }
 
         // SECURITY: Check if user has active linked card before allowing borrowing
         $activeCard = $user->cards()->where('is_active', true)->first();
@@ -168,15 +179,17 @@ class BorrowingElectricityController extends Controller
         $provider = ElectricityProvider::findOrFail($request->electricity_provider_id);
 
         try {
-            // Process borrowing
-            $borrowing = $this->borrowingService->borrowElectricity(
-                $user,
-                $request->meter_number,
-                $request->amount,
-                $provider->code,
-                $request->meter_type,
-                $request->duration ?? 7
-            );
+            // Process borrowing atomically
+            $borrowing = $this->processAtomicTransaction($user->id, 0, function ($lockedUser) use ($request, $provider) {
+                return $this->borrowingService->borrowElectricity(
+                    $lockedUser,
+                    $request->meter_number,
+                    $request->amount,
+                    $provider->code,
+                    $request->meter_type,
+                    $request->duration ?? 7
+                );
+            });
 
             // Save as beneficiary if requested
             if ($request->save_as_beneficiary && $request->beneficiary_name) {

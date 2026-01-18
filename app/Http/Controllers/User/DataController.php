@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers\User;
 
-use App\Http\Controllers\Controller;
+use App\Http\Controllers\AtomicController;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use App\Models\Network;
@@ -16,8 +16,10 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Auth;
 use App\Notifications\PurchaseConfirmation;
 use App\Models\Setting;
+use Illuminate\Support\Facades\DB;
+use App\Models\User;
 
-class DataController extends Controller
+class DataController extends AtomicController
 {
     protected $eligibilityService;
     protected $husmodataService;
@@ -108,9 +110,21 @@ class DataController extends Controller
             'beneficiary_id' => 'nullable|exists:beneficiaries,id',
             'pin' => 'required|string|size:4',
             'ported_number' => 'boolean',
+            'request_id' => 'nullable|string',
         ]);
 
         $user = $request->user();
+
+        // **SECURITY FIX 1: Check for duplicate request**
+        $requestId = $request->request_id ?: $this->generateRequestId($user->id);
+        if ($this->isDuplicateRequest($requestId, $user->id, 'data_purchase')) {
+            return redirect()->back()->with('error', 'This request is already being processed. Please wait.');
+        }
+
+        // **SECURITY FIX 2: Rate limiting**
+        if ($this->isRateLimited($user->id, 'data_purchase')) {
+            return redirect()->back()->with('error', 'Too many attempts. Please wait before trying again.');
+        }
 
         if (!Hash::check($request->pin, $user->pin)) {
             return redirect()->back()->withErrors(['pin' => 'Invalid PIN. Please try again.']);
@@ -121,93 +135,99 @@ class DataController extends Controller
             ->where('id', $request->data_plan_id)
             ->firstOrFail();
 
-        if ($user->wallet_balance < $dataPlan->selling_price) {
-            return redirect()->back()->with('error', 'Insufficient wallet balance. Please fund your wallet.');
-        }
+        try {
+            $result = $this->processAtomicTransaction($user->id, $dataPlan->selling_price, function ($lockedUser) use ($request, $network, $dataPlan, $requestId) {
+                
+                if (!$dataPlan->dataplan_id) {
+                    throw new \Exception('This data plan is currently unavailable. Please try another one.');
+                }
 
-        $reference = 'DATA' . strtoupper(Str::random(22));
+                $reference = 'DATA' . strtoupper(Str::random(10)) . time();
+                $profit = $this->calculateProfitMargin($dataPlan->selling_price);
 
-        $transaction = Transaction::create([
-            'user_id' => $user->id,
-            'reference' => $reference,
-            'type' => 'data',
-            'amount' => $dataPlan->selling_price,
-            'fee' => 0,
-            'status' => 'pending',
-            'recipient' => $request->phone_number,
-            'description' => $network->name . ' ' . $dataPlan->name . ' Purchase to ' . $request->phone_number,
-            'meta_data' => [
-                'network' => $network->name,
-                'network_code' => $network->code,
-                'phone_number' => $request->phone_number,
-                'plan_name' => $dataPlan->name,
-                'plan_code' => $dataPlan->code,
-                'plan_type' => $dataPlan->plan_type,
-                'dataplan_id' => $dataPlan->dataplan_id,
-                'data_amount' => $dataPlan->data_amount,
-                'validity' => $dataPlan->validity,
-                'amount_paid' => $dataPlan->selling_price,
-                'beneficiary_id' => $request->beneficiary_id,
-            ],
-        ]);
-
-        $user->wallet_balance -= $dataPlan->selling_price;
-        $user->save();
-
-        if (!$dataPlan->dataplan_id) {
-            $user->wallet_balance += $dataPlan->selling_price;
-            $user->save();
-            $transaction->status = 'failed';
-            $transaction->save();
-            return redirect()->back()->with('error', 'This data plan is currently unavailable. Please try another one.');
-        }
-
-        $response = $this->husmodataService->buyData(
-            $request->phone_number,
-            $network->code,
-            $dataPlan->dataplan_id,
-            $reference,
-            $request->boolean('ported_number', false)
-        );
-
-        if ($response['success']) {
-            $metaData = $transaction->meta_data;
-            $metaData['api_id'] = $response['data']['id'] ?? ($response['data']['Status'] ?? null);
-            $metaData['response'] = $response['data'];
-            $transaction->status = 'successful';
-            $transaction->save();
-
-            $user->notify(new PurchaseConfirmation($transaction, 'data'));
-
-            if ($request->save_as_beneficiary && !$request->beneficiary_id) {
-                Beneficiary::create([
-                    'user_id' => $user->id,
-                    'name' => $request->beneficiary_name,
-                    'phone_number' => $request->phone_number,
-                    'service_type' => 'data',
-                    'network_id' => $network->id,
-                    'is_favorite' => false,
+                $transaction = Transaction::create([
+                    'user_id' => $lockedUser->id,
+                    'reference' => $reference,
+                    'type' => 'data',
+                    'amount' => $dataPlan->selling_price,
+                    'fee' => 0,
+                    'profit' => $profit,
+                    'status' => 'pending',
+                    'recipient' => $request->phone_number,
+                    'description' => $network->name . ' ' . $dataPlan->name . ' Purchase to ' . $request->phone_number,
                     'meta_data' => [
-                        'last_plan_id' => $dataPlan->id,
-                        'last_plan_name' => $dataPlan->name,
-                        'last_data_amount' => $dataPlan->data_amount,
+                        'network' => $network->name,
+                        'network_code' => $network->code,
+                        'phone_number' => $request->phone_number,
+                        'plan_name' => $dataPlan->name,
+                        'plan_code' => $dataPlan->code,
+                        'plan_type' => $dataPlan->plan_type,
+                        'dataplan_id' => $dataPlan->dataplan_id,
+                        'data_amount' => $dataPlan->data_amount,
+                        'validity' => $dataPlan->validity,
+                        'amount_paid' => $dataPlan->selling_price,
+                        'beneficiary_id' => $request->beneficiary_id,
+                        'request_id' => $requestId,
                     ],
                 ]);
+
+                // Deduct from wallet
+                $this->deductWallet($lockedUser, $dataPlan->selling_price, 'data purchase');
+
+                return $transaction;
+            });
+
+            $transaction = $result;
+
+            $response = $this->husmodataService->buyData(
+                $request->phone_number,
+                $network->code,
+                $dataPlan->dataplan_id,
+                $transaction->reference,
+                $request->boolean('ported_number', false)
+            );
+
+            if ($response['success']) {
+                $metaData = $transaction->meta_data;
+                $metaData['api_id'] = $response['data']['id'] ?? ($response['data']['Status'] ?? null);
+                $metaData['response'] = $response['data'];
+                $metaData['completed_at'] = now();
+                $transaction->meta_data = $metaData;
+                $transaction->status = 'successful';
+                $transaction->save();
+
+                $user->notify(new PurchaseConfirmation($transaction, 'data'));
+
+                if ($request->save_as_beneficiary && !$request->beneficiary_id) {
+                    Beneficiary::create([
+                        'user_id' => $user->id,
+                        'name' => $request->beneficiary_name,
+                        'phone_number' => $request->phone_number,
+                        'service_type' => 'data',
+                        'network_id' => $network->id,
+                        'is_favorite' => false,
+                        'meta_data' => [
+                            'last_plan_id' => $dataPlan->id,
+                            'last_plan_name' => $dataPlan->name,
+                            'last_data_amount' => $dataPlan->data_amount,
+                        ],
+                    ]);
+                }
+
+                return redirect()->route('dashboard')->with('success', 'Data purchase successful!');
+            } else {
+                // API failed, refund the user using atomic helper
+                $this->failAndRefund($transaction, $user->id, $dataPlan->selling_price, $response);
+
+                return redirect()->back()->with('error', 'Data purchase failed: ' . ($response['message'] ?? 'Unknown error. Your money has been refunded.'));
             }
 
-            return redirect()->route('dashboard')->with('success', 'Data purchase successful!');
-        } else {
-            $user->wallet_balance += $dataPlan->selling_price;
-            $user->save();
-
-            $transaction->status = 'failed';
-            $transaction->save();
-
-            return redirect()->back()->with('error', 'Data purchase failed: ' . ($response['message'] ?? 'Unknown error'));
+        } catch (\Exception $e) {
+            return redirect()->back()->with('error', $e->getMessage());
         }
     }
 
-    protected function calculateProfitMargin($amount)
+    protected function calculateProfitMargin($amount,$type = 'data')
     {
         $user = Auth::user();
         $settings = Setting::first();
@@ -216,6 +236,6 @@ class DataController extends Controller
             return $amount * ($settings->pro_data_profit_percentage / 100);
         }
 
-        return parent::calculateProfitMargin($amount);
+        return parent::calculateProfitMargin($amount, 'data');
     }
 }

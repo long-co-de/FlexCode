@@ -2,15 +2,22 @@
 
 namespace App\Http\Controllers\Admin;
 
-use App\Http\Controllers\Controller;
+use App\Http\Controllers\AtomicController;
 use App\Models\Borrowing;
 use App\Models\User;
+use App\Services\BorrowingService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\DB;
 
-class BorrowingController extends Controller
+class BorrowingController extends AtomicController
 {
+    protected $borrowingService;
+
+    public function __construct(BorrowingService $borrowingService)
+    {
+        $this->borrowingService = $borrowingService;
+    }
     /**
      * Display a listing of all borrowings.
      */
@@ -80,18 +87,20 @@ class BorrowingController extends Controller
      */
     public function triggerRepayment(Borrowing $borrowing)
     {
+        $lockKey = 'admin_borrowing_lock_' . $borrowing->id;
+        $lock = \Illuminate\Support\Facades\Cache::lock($lockKey, 10);
+
+        if (!$lock->get()) {
+            return back()->with('error', 'This record is currently being updated.');
+        }
+
         try {
-            // Logic to trigger repayment (e.g., charge the card or wallet)
-            if ($borrowing->status !== 'active' && $borrowing->status !== 'overdue') {
-                return back()->with('error', 'This borrowing cannot be repaid in its current status.');
-            }
+            $this->borrowingService->processRepayment($borrowing);
 
-            // TODO: Implement actual repayment logic
-            // For now, mark as paid if payment is successful
-            $borrowing->markAsPaid();
-
+            \Illuminate\Support\Facades\Cache::forget($lockKey);
             return back()->with('success', 'Repayment triggered successfully.');
         } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Cache::forget($lockKey);
             return back()->with('error', 'Failed to trigger repayment: ' . $e->getMessage());
         }
     }
@@ -101,11 +110,45 @@ class BorrowingController extends Controller
      */
     public function markAsPaid(Borrowing $borrowing)
     {
+        $lockKey = 'admin_borrowing_lock_' . $borrowing->id;
+        $lock = \Illuminate\Support\Facades\Cache::lock($lockKey, 10);
+
+        if (!$lock->get()) {
+            return back()->with('error', 'This record is currently being updated.');
+        }
+
         try {
-            $borrowing->markAsPaid();
+            $this->borrowingService->payDebt($borrowing, $borrowing->total_amount, 'manual_admin');
+            
+            \Illuminate\Support\Facades\Cache::forget($lockKey);
             return back()->with('success', 'Borrowing marked as paid.');
         } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Cache::forget($lockKey);
             return back()->with('error', 'Failed to mark as paid: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Process payment from user's card.
+     */
+    public function processPayment(Borrowing $borrowing)
+    {
+        $lockKey = 'admin_borrowing_lock_' . $borrowing->id;
+        $lock = \Illuminate\Support\Facades\Cache::lock($lockKey, 10);
+
+        if (!$lock->get()) {
+            return back()->with('error', 'This record is currently being updated.');
+        }
+
+        try {
+            // Attempt to charge the user's card for the outstanding amount
+            $this->borrowingService->payDebt($borrowing, $borrowing->total_amount, 'card_charge');
+
+            \Illuminate\Support\Facades\Cache::forget($lockKey);
+            return back()->with('success', 'Payment processed successfully from user card.');
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Cache::forget($lockKey);
+            return back()->with('error', 'Failed to process payment: ' . $e->getMessage());
         }
     }
 
@@ -114,16 +157,29 @@ class BorrowingController extends Controller
      */
     public function cancel(Borrowing $borrowing)
     {
+        $lockKey = 'admin_borrowing_lock_' . $borrowing->id;
+        $lock = \Illuminate\Support\Facades\Cache::lock($lockKey, 10);
+
+        if (!$lock->get()) {
+            return back()->with('error', 'This record is currently being updated.');
+        }
+
         try {
-            if ($borrowing->status === 'paid') {
-                return back()->with('error', 'Cannot cancel a paid borrowing.');
-            }
+            DB::transaction(function () use ($borrowing) {
+                $borrowing = Borrowing::where('id', $borrowing->id)->lockForUpdate()->firstOrFail();
 
-            $borrowing->status = 'failed';
-            $borrowing->save();
+                if ($borrowing->status === 'paid') {
+                    throw new \Exception('Cannot cancel a paid borrowing.');
+                }
 
+                $borrowing->status = 'failed';
+                $borrowing->save();
+            });
+
+            $lock->release();
             return back()->with('success', 'Borrowing cancelled.');
         } catch (\Exception $e) {
+            $lock->release();
             return back()->with('error', 'Failed to cancel borrowing: ' . $e->getMessage());
         }
     }

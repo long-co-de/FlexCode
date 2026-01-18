@@ -305,7 +305,7 @@ class MonnifyService
     }
 
     /**
-     * Process successful transaction webhook
+     * Process successful transaction webhook with atomic safety
      *
      * @param array $eventData
      * @return array
@@ -324,61 +324,108 @@ class MonnifyService
             ];
         }
 
-        // Find the wallet funding record
-        $walletFunding = WalletFunding::where('reference', $reference)->first();
-        if (!$walletFunding) {
+        $lock = \Illuminate\Support\Facades\Cache::lock('monnify_webhook:' . $reference, 30);
+        
+        if (!$lock->get()) {
             return [
                 'success' => false,
-                'message' => 'Wallet funding record not found',
+                'message' => 'Transaction is currently being processed',
             ];
         }
 
-        // If already processed, return success
-        if ($walletFunding->status === 'successful') {
+        try {
+            return \Illuminate\Support\Facades\DB::transaction(function () use ($reference, $amount, $paymentMethod, $eventData) {
+                // Find and lock the wallet funding record
+                $walletFunding = WalletFunding::where('reference', $reference)
+                    ->lockForUpdate()
+                    ->first();
+
+                if (!$walletFunding) {
+                    return [
+                        'success' => false,
+                        'message' => 'Wallet funding record not found',
+                    ];
+                }
+
+                // If already processed, return success
+                if ($walletFunding->status === 'successful') {
+                    return [
+                        'success' => true,
+                        'message' => 'Transaction already processed',
+                    ];
+                }
+
+                // Apply appropriate charge based on payment method
+                $chargePercentage = $this->getChargePercentageForPaymentMethod($paymentMethod);
+                $chargeAmount = ($amount * $chargePercentage) / 100;
+                $finalAmount = $amount - $chargeAmount;
+
+                // Update wallet funding status and include charge information
+                $walletFunding->status = 'successful';
+                $walletFunding->meta_data = array_merge($walletFunding->meta_data ?? [], [
+                    'completed_at' => now(),
+                    'payment_reference' => $eventData['transactionReference'] ?? '',
+                    'payment_method' => $paymentMethod,
+                    'payment_source' => $eventData['paymentSourceInformation'] ?? [],
+                    'original_amount' => $amount,
+                    'charge_percentage' => $chargePercentage,
+                    'charge_amount' => $chargeAmount,
+                    'final_amount' => $finalAmount,
+                ]);
+                $walletFunding->save();
+
+                // Find and lock the transaction record
+                $transaction = Transaction::where('reference', $reference)->lockForUpdate()->first();
+                if ($transaction) {
+                    $transaction->status = 'successful';
+                    $transaction->save();
+                }
+
+                // Credit user wallet with debt settlement
+                $user = User::where('id', $walletFunding->user_id)->lockForUpdate()->first();
+                if ($user) {
+                    // Settle outstanding debts first
+                    $borrowingService = app(\App\Services\BorrowingService::class);
+                    $remainingAmount = $borrowingService->settleDebts($user, $finalAmount);
+                    
+                    if ($remainingAmount < $finalAmount) {
+                        $settledAmount = $finalAmount - $remainingAmount;
+                        $notificationService = app(\App\Services\NotificationService::class);
+                        $notificationService->sendSystemNotification(
+                            $user,
+                            'Debt Automatically Settled',
+                            "₦{$settledAmount} has been deducted from your funding to settle your outstanding debt.",
+                            'info'
+                        );
+                    }
+                    
+                    $user->wallet_balance += $remainingAmount;
+                    $user->save();
+
+                    // Process referral bonus
+                    $referralService = app(\App\Services\ReferralService::class);
+                    if ($transaction) {
+                        $referralService->processReferralBonus($transaction);
+                    }
+                }
+
+                return [
+                    'success' => true,
+                    'message' => 'Transaction processed successfully',
+                ];
+            });
+        } catch (\Exception $e) {
+            Log::error('Monnify processSuccessfulTransaction failed: ' . $e->getMessage(), [
+                'reference' => $reference,
+                'trace' => $e->getTraceAsString()
+            ]);
             return [
-                'success' => true,
-                'message' => 'Transaction already processed',
+                'success' => false,
+                'message' => 'Internal error: ' . $e->getMessage(),
             ];
+        } finally {
+            $lock->release();
         }
-
-        // Apply appropriate charge based on payment method
-        $chargePercentage = $this->getChargePercentageForPaymentMethod($paymentMethod);
-        $chargeAmount = ($amount * $chargePercentage) / 100;
-        $finalAmount = $amount - $chargeAmount;
-
-        // Update wallet funding status and include charge information
-        $walletFunding->status = 'successful';
-        $walletFunding->meta_data = array_merge($walletFunding->meta_data ?? [], [
-            'completed_at' => now(),
-            'payment_reference' => $eventData['transactionReference'] ?? '',
-            'payment_method' => $paymentMethod,
-            'payment_source' => $eventData['paymentSourceInformation'] ?? [],
-            'original_amount' => $amount,
-            'charge_percentage' => $chargePercentage,
-            'charge_amount' => $chargeAmount,
-            'final_amount' => $finalAmount,
-        ]);
-        $walletFunding->save();
-
-        // Find the transaction record
-        $transaction = Transaction::where('reference', $reference)->first();
-        if ($transaction) {
-            // Update transaction status
-            $transaction->status = 'successful';
-            $transaction->save();
-        }
-
-        // Update user's wallet balance with the final amount after charges
-        $user = User::find($walletFunding->user_id);
-        if ($user) {
-            $user->wallet_balance += $finalAmount;
-            $user->save();
-        }
-
-        return [
-            'success' => true,
-            'message' => 'Transaction processed successfully',
-        ];
     }
     
     /**

@@ -52,7 +52,7 @@ class PurchaseConfirmation extends Notification implements ShouldQueue
             ->line('')
             ->action('View Details', url('/transactions/' . $this->transaction->id))
             ->line('If you have any questions, please contact our support team.')
-            ->line('Thank you for using Paylow!');
+            ->line('Thank you for using BorrowLite !');
     }
 
     public function toArray(object $notifiable): array

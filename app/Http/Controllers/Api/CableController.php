@@ -2,15 +2,16 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Http\Controllers\Controller;
+use App\Http\Controllers\AtomicController;
 use Illuminate\Http\Request;
 use App\Models\CableProvider;
 use App\Models\CablePlan;
 use App\Models\Transaction;
 use App\Services\DatavendroService;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Hash;
 
-class CableController extends Controller
+class CableController extends AtomicController
 {
     protected $datavendroService;
 
@@ -100,74 +101,98 @@ class CableController extends Controller
             'plan_id' => 'required|exists:cable_plans,id',
             'smart_card_number' => 'required|string',
             'customer_name' => 'required|string',
+            'pin' => 'required|string|size:4',
+            'request_id' => 'required|string|min:20',
         ]);
 
         $user = $request->user();
-        $plan = CablePlan::with('provider')->findOrFail($request->plan_id);
 
-        // Check if user has enough balance
-        if ($user->wallet_balance < $plan->selling_price) {
-            return response()->json([
-                'message' => 'Insufficient wallet balance. Please fund your wallet.',
-            ], 400);
+        // Deduplication check
+        if ($this->isDuplicateRequest($request->request_id, $user->id, 'api_cable_purchase')) {
+            return response()->json(['message' => 'Duplicate request detected.'], 400);
         }
 
-        // Generate unique reference
-        $reference = 'CABLE' . strtoupper(Str::random(8));
+        // Rate limiting
+        if ($this->isRateLimited($user->id, 'api_cable_purchase')) {
+            return response()->json(['message' => 'Too many requests. Please wait.'], 429);
+        }
 
-        // Create transaction record
-        $transaction = Transaction::create([
-            'user_id' => $user->id,
-            'reference' => $reference,
-            'type' => 'cable',
-            'amount' => $plan->selling_price,
-            'fee' => 0,
-            'status' => 'pending',
-            'recipient' => $request->smart_card_number,
-            'description' => $plan->provider->name . ' ' . $plan->name . ' Subscription for ' . $request->customer_name,
-            'meta_data' => [
-                'provider' => $plan->provider->name,
-                'provider_code' => $plan->provider->code,
-                'plan_name' => $plan->name,
-                'plan_code' => $plan->code,
-                'smart_card_number' => $request->smart_card_number,
-                'customer_name' => $request->customer_name,
-                'amount' => $plan->selling_price,
-            ],
-        ]);
+        // Verify PIN
+        if (!Hash::check($request->pin, $user->pin)) {
+            return response()->json(['message' => 'Invalid transaction PIN.'], 403);
+        }
 
-        // Deduct from user's wallet
-        $user->wallet_balance -= $plan->selling_price;
-        $user->save();
+        $plan = CablePlan::with('provider')->findOrFail($request->plan_id);
 
-        // Process with Datavendro API
-        $response = $this->datavendroService->subscribeCable(
-            $request->smart_card_number,
-            $plan->provider->code,
-            $plan->code
-        );
+        try {
+            $result = $this->processAtomicTransaction($user->id, $plan->selling_price, function ($lockedUser) use ($request, $plan) {
+                // Generate unique reference
+                $reference = 'CABLE' . strtoupper(Str::random(8)) . time();
 
-        if ($response['success']) {
-            // Update transaction status
-            $transaction->status = 'successful';
-            $transaction->save();
+                // Create transaction record
+                $transaction = Transaction::create([
+                    'user_id' => $lockedUser->id,
+                    'reference' => $reference,
+                    'type' => 'cable',
+                    'amount' => $plan->selling_price,
+                    'fee' => 0,
+                    'status' => 'pending',
+                    'recipient' => $request->smart_card_number,
+                    'description' => $plan->provider->name . ' ' . $plan->name . ' Subscription for ' . $request->customer_name,
+                    'meta_data' => [
+                        'provider' => $plan->provider->name,
+                        'provider_code' => $plan->provider->code,
+                        'plan_name' => $plan->name,
+                        'plan_code' => $plan->code,
+                        'smart_card_number' => $request->smart_card_number,
+                        'customer_name' => $request->customer_name,
+                        'amount' => $plan->selling_price,
+                        'request_id' => $request->request_id,
+                        'channel' => 'api',
+                    ],
+                ]);
 
+                // Deduct from user's wallet
+                $this->deductWallet($lockedUser, $plan->selling_price, 'API cable purchase');
+
+                // Process with Datavendro API
+                $response = $this->datavendroService->subscribeCable(
+                    $request->smart_card_number,
+                    $plan->provider->code,
+                    $plan->code
+                );
+
+                if ($response['success']) {
+                    // Update transaction status
+                    $transaction->status = 'successful';
+                    $transaction->save();
+
+                    return [
+                        'success' => true,
+                        'message' => 'Cable subscription successful!',
+                        'transaction' => $transaction,
+                    ];
+                } else {
+                    // If failed, refund the user
+                    $lockedUser->wallet_balance += $plan->selling_price;
+                    $lockedUser->save();
+
+                    // Update transaction status
+                    $transaction->status = 'failed';
+                    $transaction->meta_data = array_merge($transaction->meta_data ?? [], [
+                        'error' => $response['message'] ?? 'Unknown error'
+                    ]);
+                    $transaction->save();
+
+                    throw new \Exception($response['message'] ?? 'Cable subscription failed at provider.');
+                }
+            });
+
+            return response()->json($result);
+
+        } catch (\Exception $e) {
             return response()->json([
-                'message' => 'Cable subscription successful!',
-                'transaction' => $transaction,
-            ]);
-        } else {
-            // If failed, refund the user
-            $user->wallet_balance += $plan->selling_price;
-            $user->save();
-
-            // Update transaction status
-            $transaction->status = 'failed';
-            $transaction->save();
-
-            return response()->json([
-                'message' => 'Cable subscription failed: ' . ($response['message'] ?? 'Unknown error'),
-                'transaction' => $transaction,
+                'message' => $e->getMessage(),
             ], 400);
         }
     }

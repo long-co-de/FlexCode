@@ -2,14 +2,15 @@
 
 namespace App\Http\Controllers\Admin;
 
-use App\Http\Controllers\Controller;
+use App\Http\Controllers\AtomicController;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use App\Models\AirtimeToCash;
 use App\Models\Transaction;
 use App\Models\User;
+use Illuminate\Support\Facades\DB;
 
-class AirtimeToCashController extends Controller
+class AirtimeToCashController extends AtomicController
 {
     /**
      * Display a listing of airtime to cash requests.
@@ -76,41 +77,59 @@ class AirtimeToCashController extends Controller
             'status' => 'required|in:pending,processing,successful,failed',
             'admin_note' => 'nullable|string|max:500',
         ]);
+
+        // Cache lock to prevent concurrent admin actions on the same request
+        $lock = \Illuminate\Support\Facades\Cache::lock('admin_a2c_update:' . $airtimeToCash->id, 10);
         
-        $oldStatus = $airtimeToCash->status;
-        $newStatus = $request->status;
-        
-        // Update airtime to cash record
-        $airtimeToCash->status = $newStatus;
-        $airtimeToCash->admin_note = $request->admin_note;
-        $airtimeToCash->save();
-        
-        // Update related transaction
-        $transaction = Transaction::where('reference', $airtimeToCash->reference)->first();
-        if ($transaction) {
-            $transaction->status = $newStatus;
-            $transaction->save();
+        if (!$lock->get()) {
+            return redirect()->back()->with('error', 'This request is currently being updated by another administrator.');
         }
-        
-        // If status changed to successful, credit user's wallet
-        if ($oldStatus !== 'successful' && $newStatus === 'successful') {
-            $user = User::find($airtimeToCash->user_id);
-            if ($user) {
-                $user->wallet_balance += $airtimeToCash->amount_to_receive;
-                $user->save();
-            }
+
+        try {
+            DB::transaction(function () use ($request, $airtimeToCash) {
+                // Lock the airtime to cash record first
+                $lockedA2C = AirtimeToCash::where('id', $airtimeToCash->id)->lockForUpdate()->firstOrFail();
+                $oldStatus = $lockedA2C->status;
+                $newStatus = $request->status;
+
+                if ($oldStatus === $newStatus) {
+                    $lockedA2C->admin_note = $request->admin_note;
+                    $lockedA2C->save();
+                    return;
+                }
+
+                // If status changed to successful or from successful, we need to lock the user
+                if (($oldStatus !== 'successful' && $newStatus === 'successful') || 
+                    ($oldStatus === 'successful' && $newStatus !== 'successful')) {
+                    
+                    $user = User::where('id', $lockedA2C->user_id)->lockForUpdate()->firstOrFail();
+                    
+                    if ($newStatus === 'successful') {
+                        $this->creditWallet($user, $lockedA2C->amount_to_receive, 'Airtime to Cash');
+                    } else {
+                        $this->deductWallet($user, $lockedA2C->amount_to_receive, 'Reverting Successful Airtime to Cash');
+                    }
+                }
+
+                // Update airtime to cash record
+                $lockedA2C->status = $newStatus;
+                $lockedA2C->admin_note = $request->admin_note;
+                $lockedA2C->save();
+
+                // Update related transaction with lock
+                $transaction = Transaction::where('reference', $lockedA2C->reference)->lockForUpdate()->first();
+                if ($transaction) {
+                    $transaction->status = $newStatus;
+                    $transaction->save();
+                }
+            });
+
+            return redirect()->route('admin.airtime-to-cash.show', $airtimeToCash)
+                ->with('success', 'Airtime to cash request status updated successfully.');
+        } catch (\Exception $e) {
+            return redirect()->back()->with('error', 'Error updating status: ' . $e->getMessage());
+        } finally {
+            $lock->release();
         }
-        
-        // If status was successful but now changed to something else, deduct from user's wallet
-        if ($oldStatus === 'successful' && $newStatus !== 'successful') {
-            $user = User::find($airtimeToCash->user_id);
-            if ($user && $user->wallet_balance >= $airtimeToCash->amount_to_receive) {
-                $user->wallet_balance -= $airtimeToCash->amount_to_receive;
-                $user->save();
-            }
-        }
-        
-        return redirect()->route('admin.airtime-to-cash.show', $airtimeToCash)
-            ->with('success', 'Airtime to cash request status updated successfully.');
     }
 }

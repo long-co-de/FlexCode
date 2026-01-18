@@ -121,11 +121,11 @@ class PaystackService
 
             if ($response->successful()) {
                 $data = $response->json()['data'] ?? [];
-                
+
                 // Check if transaction was successful
                 if ($data['status'] === 'success' && isset($data['authorization'])) {
                     $authorization = $data['authorization'];
-                    
+
                     return [
                         'success' => true,
                         'data' => [
@@ -177,7 +177,7 @@ class PaystackService
 
             if ($response->successful()) {
                 $data = $response->json()['data'] ?? [];
-                
+
                 if ($data['status'] === 'success') {
                     return [
                         'success' => true,
@@ -249,29 +249,74 @@ class PaystackService
     public function createCustomer(User $user)
     {
         try {
-            $response = Http::withHeaders([
-                'Authorization' => 'Bearer ' . $this->secretKey,
-                'Accept' => 'application/json',
-            ])->post($this->baseUrl . '/customer', [
+            // Validate and format phone number
+            $phone = $this->formatPhoneNumber($user->phone_number);
+
+            Log::info('Paystack createCustomer - Raw phone', [
+                'raw_phone' => $user->phone_number,
+                'formatted_phone' => $phone,
+                'user_id' => $user->id,
                 'email' => $user->email,
-                'first_name' => explode(' ', $user->name)[0] ?? $user->name,
-                'last_name' => explode(' ', $user->name)[1] ?? '',
-                'phone' => $user->phone_number,
             ]);
 
-            if ($response->successful()) {
+            if (!$phone) {
                 return [
-                    'success' => true,
-                    'data' => $response->json()['data'] ?? [],
+                    'success' => false,
+                    'message' => 'Valid phone number is required. Please update your profile with a valid phone number.',
                 ];
             }
 
+            // Prepare the request payload
+            $payload = [
+                'email' => $user->email,
+                'first_name' => explode(' ', $user->name)[0] ?? $user->name,
+                'last_name' => explode(' ', $user->name)[1] ?? '',
+                'phone' => $phone,
+            ];
+
+            Log::info('Paystack createCustomer - Request payload', $payload);
+
+            $response = Http::withHeaders([
+                'Authorization' => 'Bearer ' . $this->secretKey,
+                'Accept' => 'application/json',
+            ])->post($this->baseUrl . '/customer', $payload);
+
+            Log::info('Paystack createCustomer - Response status', [
+                'status' => $response->status(),
+                'successful' => $response->successful(),
+            ]);
+
+            if ($response->successful()) {
+                $responseData = $response->json();
+                Log::info('Paystack createCustomer - Success', [
+                    'customer_code' => $responseData['data']['customer_code'] ?? null,
+                    'customer_id' => $responseData['data']['id'] ?? null,
+                ]);
+
+                return [
+                    'success' => true,
+                    'data' => $responseData['data'] ?? [],
+                ];
+            }
+
+            // Log the actual error from Paystack
+            $errorData = $response->json();
+            Log::error('Paystack Create Customer Error', [
+                'response' => $errorData,
+                'user_id' => $user->id,
+                'phone' => $phone,
+                'status_code' => $response->status(),
+            ]);
+
             return [
                 'success' => false,
-                'message' => 'Failed to create customer',
+                'message' => $errorData['message'] ?? 'Failed to create customer',
+                'details' => $errorData['meta']['nextStep'] ?? null,
             ];
         } catch (Exception $e) {
-            Log::error('Paystack Error: ' . $e->getMessage());
+            Log::error('Paystack Error: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+            ]);
             return [
                 'success' => false,
                 'message' => 'An error occurred',
@@ -279,9 +324,272 @@ class PaystackService
         }
     }
 
+    public function createDedicatedAccount(User $user)
+    {
+        try {
+            // First, ensure the user is a customer on Paystack
+            $customerResponse = $this->createCustomer($user);
+            if (!$customerResponse['success']) {
+                return $customerResponse;
+            }
+
+            $customerCode = $customerResponse['data']['customer_code'];
+            $customerId = $customerResponse['data']['id'] ?? null;
+
+            Log::info('Paystack createDedicatedAccount - Starting', [
+                'user_id' => $user->id,
+                'customer_code' => $customerCode,
+                'customer_id' => $customerId,
+            ]);
+
+            // Check if customer has phone number on Paystack
+            $hasPhone = $this->checkCustomerPhone($customerCode);
+
+            if (!$hasPhone) {
+                Log::warning('Customer missing phone on Paystack, updating...');
+                $phone = $this->formatPhoneNumber($user->phone_number);
+                $updateResult = $this->updateCustomerPhone($customerCode, $phone);
+
+                if (!$updateResult['success']) {
+                    return [
+                        'success' => false,
+                        'message' => 'Could not update customer phone number on Paystack',
+                    ];
+                }
+
+                // Verify update was successful
+                sleep(1); // Small delay for update to propagate
+                $hasPhone = $this->checkCustomerPhone($customerCode);
+
+                if (!$hasPhone) {
+                    return [
+                        'success' => false,
+                        'message' => 'Phone number update did not persist on Paystack',
+                    ];
+                }
+            }
+
+            // Prepare payload for dedicated account
+            $payload = [
+                'customer' => $customerCode,
+            ];
+
+            // Some banks might require additional parameters
+            // You can specify preferred bank(s) if needed
+            // $payload['preferred_bank'] = 'wema-bank';
+
+            Log::info('Paystack createDedicatedAccount - Request payload', $payload);
+
+            $response = Http::withHeaders([
+                'Authorization' => 'Bearer ' . $this->secretKey,
+                'Accept' => 'application/json',
+                'Content-Type' => 'application/json',
+            ])->withoutVerifying()->post($this->baseUrl . '/dedicated_account', $payload);
+
+            Log::info('Paystack createDedicatedAccount - Response status', [
+                'status' => $response->status(),
+                'successful' => $response->successful(),
+            ]);
+
+            if ($response->successful()) {
+                $responseData = $response->json();
+                Log::info('Paystack createDedicatedAccount - Success', [
+                    'account_number' => $responseData['data']['account_number'] ?? null,
+                    'bank_name' => $responseData['data']['bank']['name'] ?? null,
+                ]);
+
+                return [
+                    'success' => true,
+                    'data' => $responseData['data'] ?? [],
+                ];
+            }
+
+            $errorData = $response->json();
+            Log::error('Paystack API Error: Failed to create dedicated account', [
+                'response' => $errorData,
+                'user_id' => $user->id,
+                'customer_code' => $customerCode,
+                'payload' => $payload,
+            ]);
+
+            return [
+                'success' => false,
+                'message' => $errorData['message'] ?? 'Failed to create dedicated account',
+                'details' => $errorData['meta']['nextStep'] ?? null,
+            ];
+        } catch (Exception $e) {
+            Log::error('Paystack API Error: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return [
+                'success' => false,
+                'message' => 'An error occurred while connecting to the payment gateway',
+            ];
+        }
+    }
+    /**
+     * Check if customer has phone number on Paystack
+     */
+    protected function checkCustomerPhone($customerCode)
+    {
+        try {
+            $response = Http::withHeaders([
+                'Authorization' => 'Bearer ' . $this->secretKey,
+                'Accept' => 'application/json',
+            ])->get($this->baseUrl . '/customer/' . $customerCode);
+
+            if ($response->successful()) {
+                $customerData = $response->json()['data'] ?? [];
+                $hasPhone = !empty($customerData['phone']);
+
+                Log::info('Customer phone check', [
+                    'customer_code' => $customerCode,
+                    'has_phone' => $hasPhone,
+                    'phone_in_data' => $customerData['phone'] ?? 'none',
+                ]);
+
+                return $hasPhone;
+            }
+
+            return false;
+        } catch (Exception $e) {
+            Log::error('Check customer phone error: ' . $e->getMessage());
+            return false;
+        }
+    }
+    /**
+     * Update customer phone number
+     */
+    protected function updateCustomerPhone($customerCode, $phone)
+    {
+        try {
+            $response = Http::withHeaders([
+                'Authorization' => 'Bearer ' . $this->secretKey,
+                'Accept' => 'application/json',
+                'Content-Type' => 'application/json',
+            ])->put($this->baseUrl . '/customer/' . $customerCode, [
+                'phone' => $phone,
+            ]);
+
+            if ($response->successful()) {
+                Log::info('Customer phone updated successfully');
+                return ['success' => true];
+            }
+
+            Log::error('Failed to update customer phone', [
+                'response' => $response->json(),
+            ]);
+            return ['success' => false];
+        } catch (Exception $e) {
+            Log::error('Update customer phone error: ' . $e->getMessage());
+            return ['success' => false];
+        }
+    }
+
+    /**
+     * Retry dedicated account creation
+     */
+    protected function retryDedicatedAccountCreation($customerCode, $originalPayload)
+    {
+        try {
+            $response = Http::withHeaders([
+                'Authorization' => 'Bearer ' . $this->secretKey,
+                'Accept' => 'application/json',
+                'Content-Type' => 'application/json',
+            ])->withoutVerifying()->post($this->baseUrl . '/dedicated_account', $originalPayload);
+
+            if ($response->successful()) {
+                $responseData = $response->json();
+                Log::info('Paystack retryDedicatedAccountCreation - Success');
+                return [
+                    'success' => true,
+                    'data' => $responseData['data'] ?? [],
+                ];
+            }
+
+            $errorData = $response->json();
+            Log::error('Paystack retry failed', [
+                'response' => $errorData,
+            ]);
+
+            return [
+                'success' => false,
+                'message' => $errorData['message'] ?? 'Failed to create dedicated account after retry',
+            ];
+        } catch (Exception $e) {
+            Log::error('Retry error: ' . $e->getMessage());
+            return [
+                'success' => false,
+                'message' => 'Retry failed: ' . $e->getMessage(),
+            ];
+        }
+    }
+
+    protected function formatPhoneNumber($phone)
+    {
+        Log::info('formatPhoneNumber - Input', ['input' => $phone]);
+
+        if (empty($phone)) {
+            Log::warning('formatPhoneNumber - Empty phone');
+            return null;
+        }
+
+        // Remove any non-digit characters
+        $phone = preg_replace('/[^0-9]/', '', $phone);
+
+        Log::info('formatPhoneNumber - After regex', ['phone' => $phone]);
+
+        if (empty($phone)) {
+            Log::warning('formatPhoneNumber - Empty after regex');
+            return null;
+        }
+
+        // If phone starts with 0, convert to +234
+        if (strlen($phone) === 11 && str_starts_with($phone, '0')) {
+            $formatted = '+234' . substr($phone, 1);
+            Log::info('formatPhoneNumber - Case 1', ['formatted' => $formatted]);
+            return $formatted;
+        }
+        // If phone is 10 digits (without leading 0), add +234
+        elseif (strlen($phone) === 10) {
+            $formatted = '+234' . $phone;
+            Log::info('formatPhoneNumber - Case 2', ['formatted' => $formatted]);
+            return $formatted;
+        }
+        // If phone already has country code but no +
+        elseif (strlen($phone) === 13 && str_starts_with($phone, '234')) {
+            $formatted = '+' . $phone;
+            Log::info('formatPhoneNumber - Case 3', ['formatted' => $formatted]);
+            return $formatted;
+        }
+        // If phone already has + and looks valid
+        elseif (str_starts_with($phone, '+') && strlen($phone) === 14) {
+            Log::info('formatPhoneNumber - Case 4 - Already formatted', ['formatted' => $phone]);
+            return $phone;
+        }
+        // Default: try to format as Nigerian number
+        else {
+            // Check if it starts with 234 and is 13 digits
+            if (str_starts_with($phone, '234') && strlen($phone) === 13) {
+                $formatted = '+' . $phone;
+            } else {
+                // Try to add +234 prefix
+                $formatted = '+234' . ltrim($phone, '0');
+            }
+
+            Log::info('formatPhoneNumber - Case 5 - Default formatting', [
+                'original' => $phone,
+                'formatted' => $formatted,
+                'length' => strlen($formatted),
+            ]);
+
+            return $formatted;
+        }
+    }
     /**
      * Map Paystack payment status to application status
      */
+
     protected function mapPaymentStatus($paystackStatus)
     {
         switch ($paystackStatus) {
@@ -337,12 +645,18 @@ class PaystackService
         $amount = ($data['amount'] ?? 0) / 100; // Convert from kobo to naira
         $status = $data['status'] ?? '';
         $authorization = $data['authorization'] ?? null;
+        $channel = $data['channel'] ?? '';
 
         if (empty($reference) || $status !== 'success') {
             return [
                 'success' => false,
                 'message' => 'Invalid transaction data',
             ];
+        }
+
+        // Handle dedicated virtual account transactions
+        if ($channel === 'dedicated_nuban') {
+            return $this->processDedicatedAccountTransaction($amount, $data);
         }
 
         // Handle different transaction types
@@ -359,50 +673,112 @@ class PaystackService
     }
 
     /**
-     * Process wallet funding transaction
+     * Process wallet funding transaction with atomic safety
      */
     protected function processWalletFunding($reference, $amount, $data)
     {
-        $walletFunding = WalletFunding::where('reference', $reference)->first();
-        if (!$walletFunding) {
+        $lock = \Illuminate\Support\Facades\Cache::lock('paystack_webhook:' . $reference, 30);
+
+        if (!$lock->get()) {
             return [
                 'success' => false,
-                'message' => 'Wallet funding record not found',
+                'message' => 'Transaction is currently being processed by another worker',
             ];
         }
 
-        if ($walletFunding->status === 'successful') {
+        try {
+            return \Illuminate\Support\Facades\DB::transaction(function () use ($reference, $amount, $data) {
+                $walletFunding = WalletFunding::where('reference', $reference)
+                    ->lockForUpdate()
+                    ->first();
+
+                if (!$walletFunding) {
+                    return [
+                        'success' => false,
+                        'message' => 'Wallet funding record not found',
+                    ];
+                }
+
+                if ($walletFunding->status === 'successful') {
+                    return [
+                        'success' => true,
+                        'message' => 'Transaction already processed',
+                    ];
+                }
+
+                // Calculate fee based on new rules: 1.5% + 100 for 2000 and above
+                $fee = ($amount * 1.5) / 100;
+                if ($amount >= 2000) {
+                    $fee += 100;
+                }
+                $netAmount = $amount - $fee;
+
+                // Update wallet funding status
+                $walletFunding->status = 'successful';
+                $walletFunding->fee = $fee;
+                $walletFunding->response_data = array_merge($walletFunding->response_data ?? [], [
+                    'completed_at' => now(),
+                    'payment_reference' => $data['id'] ?? '',
+                    'payment_method' => 'paystack',
+                    'payment_details' => $data,
+                    'fee' => $fee,
+                    'net_amount' => $netAmount,
+                ]);
+                $walletFunding->save();
+
+                // Update transaction status
+                $transaction = Transaction::where('reference', $reference)->lockForUpdate()->first();
+                if ($transaction) {
+                    $transaction->status = 'successful';
+                    $transaction->fee = $fee;
+                    $transaction->save();
+                }
+
+                // Credit user wallet with debt settlement
+                $user = User::where('id', $walletFunding->user_id)->lockForUpdate()->first();
+                if ($user) {
+                    // Settle outstanding debts first
+                    $borrowingService = app(\App\Services\BorrowingService::class);
+                    $remainingAmount = $borrowingService->settleDebts($user, $netAmount);
+
+                    if ($remainingAmount < $netAmount) {
+                        $settledAmount = $netAmount - $remainingAmount;
+                        $notificationService = app(\App\Services\NotificationService::class);
+                        $notificationService->sendSystemNotification(
+                            $user,
+                            'Debt Automatically Settled',
+                            "₦{$settledAmount} has been deducted from your funding to settle your outstanding debt.",
+                            'info'
+                        );
+                    }
+
+                    $user->wallet_balance += $remainingAmount;
+                    $user->save();
+
+                    // Process referral bonus
+                    $referralService = app(\App\Services\ReferralService::class);
+                    if ($transaction) {
+                        $referralService->processReferralBonus($transaction);
+                    }
+                }
+
+                return [
+                    'success' => true,
+                    'message' => 'Wallet funding processed successfully',
+                ];
+            });
+        } catch (\Exception $e) {
+            Log::error('Paystack processWalletFunding failed: ' . $e->getMessage(), [
+                'reference' => $reference,
+                'trace' => $e->getTraceAsString()
+            ]);
             return [
-                'success' => true,
-                'message' => 'Transaction already processed',
+                'success' => false,
+                'message' => 'Internal error: ' . $e->getMessage(),
             ];
+        } finally {
+            $lock->release();
         }
-
-        $walletFunding->status = 'successful';
-        $walletFunding->meta_data = array_merge($walletFunding->meta_data ?? [], [
-            'completed_at' => now(),
-            'payment_reference' => $data['id'] ?? '',
-            'payment_method' => 'paystack',
-            'payment_details' => $data,
-        ]);
-        $walletFunding->save();
-
-        $transaction = Transaction::where('reference', $reference)->first();
-        if ($transaction) {
-            $transaction->status = 'successful';
-            $transaction->save();
-        }
-
-        $user = User::find($walletFunding->user_id);
-        if ($user) {
-            $user->wallet_balance += $amount;
-            $user->save();
-        }
-
-        return [
-            'success' => true,
-            'message' => 'Wallet funding processed successfully',
-        ];
     }
 
     /**
@@ -412,7 +788,7 @@ class PaystackService
     {
         // You'll need to implement this based on your borrowing system
         // This would update borrowing status and mark as paid
-        
+
         Log::info('Borrowing repayment processed', [
             'reference' => $reference,
             'amount' => $amount,
@@ -426,13 +802,140 @@ class PaystackService
     }
 
     /**
+     * Process dedicated virtual account transaction
+     */
+    protected function processDedicatedAccountTransaction($amount, $data)
+    {
+        $customer = $data['customer'] ?? [];
+        $email = $customer['email'] ?? '';
+        $reference = $data['reference'] ?? '';
+
+        if (empty($email)) {
+            return [
+                'success' => false,
+                'message' => 'Customer email not found in payload',
+            ];
+        }
+
+        $lock = \Illuminate\Support\Facades\Cache::lock('paystack_virtual_acc:' . $reference, 30);
+
+        if (!$lock->get()) {
+            return [
+                'success' => false,
+                'message' => 'Transaction is currently being processed',
+            ];
+        }
+
+        try {
+            return \Illuminate\Support\Facades\DB::transaction(function () use ($email, $amount, $reference, $data) {
+                $user = User::where('email', $email)->lockForUpdate()->first();
+
+                if (!$user) {
+                    return [
+                        'success' => false,
+                        'message' => 'User not found for email: ' . $email,
+                    ];
+                }
+
+                // Check if transaction already exists and is successful
+                $existingTransaction = Transaction::where('reference', $reference)->first();
+                if ($existingTransaction && $existingTransaction->status === 'successful') {
+                    return [
+                        'success' => true,
+                        'message' => 'Transaction already processed',
+                    ];
+                }
+
+                // Calculate fee: 1.5% for virtual account
+                $fee = ($amount * 1.5) / 100;
+                $netAmount = $amount - $fee;
+
+                // Create or update wallet funding record
+                $paymentMethodId = \App\Models\PaymentMethod::where('name', 'LIKE', '%Paystack%')->value('id');
+
+                $walletFunding = WalletFunding::updateOrCreate(
+                    ['reference' => $reference],
+                    [
+                        'user_id' => $user->id,
+                        'payment_method_id' => $paymentMethodId,
+                        'amount' => $amount,
+                        'fee' => $fee,
+                        'status' => 'successful',
+                        'response_data' => array_merge($data, [
+                            'completed_at' => now(),
+                            'fee' => $fee,
+                            'net_amount' => $netAmount,
+                            'type' => 'dedicated_virtual_account'
+                        ]),
+                    ]
+                );
+
+                // Create or update transaction record
+                $transaction = Transaction::updateOrCreate(
+                    ['reference' => $reference],
+                    [
+                        'user_id' => $user->id,
+                        'type' => 'wallet_funding',
+                        'amount' => $amount,
+                        'fee' => $fee,
+                        'status' => 'successful',
+                        'recipient' => $user->email,
+                        'description' => 'Dedicated Virtual Account Funding of ₦' . number_format($amount, 2),
+                        'meta_data' => [
+                            'payment_method' => 'paystack_virtual_account',
+                            'channel' => 'dedicated_nuban',
+                            'fee' => $fee,
+                            'net_amount' => $netAmount,
+                        ],
+                    ]
+                );
+
+                // Settle outstanding debts first
+                $borrowingService = app(\App\Services\BorrowingService::class);
+                $remainingAmount = $borrowingService->settleDebts($user, $netAmount);
+
+                if ($remainingAmount < $netAmount) {
+                    $settledAmount = $netAmount - $remainingAmount;
+                    $notificationService = app(\App\Services\NotificationService::class);
+                    $notificationService->sendSystemNotification(
+                        $user,
+                        'Debt Automatically Settled',
+                        "₦" . number_format($settledAmount, 2) . " has been deducted from your virtual account funding to settle your outstanding debt.",
+                        'info'
+                    );
+                }
+
+                $user->wallet_balance += $remainingAmount;
+                $user->save();
+
+                // Process referral bonus
+                $referralService = app(\App\Services\ReferralService::class);
+                $referralService->processReferralBonus($transaction);
+
+                return [
+                    'success' => true,
+                    'message' => 'Virtual account funding processed successfully',
+                ];
+            });
+        } catch (\Exception $e) {
+            Log::error('Paystack processDedicatedAccountTransaction failed: ' . $e->getMessage());
+            return [
+                'success' => false,
+                'message' => 'Internal error: ' . $e->getMessage(),
+            ];
+        } finally {
+            $lock->release();
+        }
+    }
+
+    /**
      * Process card charge
      */
     protected function processCardCharge($reference, $amount, $data)
     {
         // Handle card charge webhook
         // Could be for various purposes - update relevant records
-        
+
         Log::info('Card charge processed', [
             'reference' => $reference,
             'amount' => $amount,

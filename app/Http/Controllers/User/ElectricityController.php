@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers\User;
 
-use App\Http\Controllers\Controller;
+use App\Http\Controllers\AtomicController;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use App\Models\ElectricityProvider;
@@ -11,8 +11,11 @@ use App\Models\Beneficiary;
 use App\Services\DatavendroService;
 use App\Services\BorrowingEligibilityService;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\DB;
+use App\Models\User;
 
-class ElectricityController extends Controller
+class ElectricityController extends AtomicController
 {
     protected $datavendroService;
     protected $eligibilityService;
@@ -30,7 +33,7 @@ class ElectricityController extends Controller
      */
     public function index()
     {
-        $user = auth()->user();
+        $user = auth('web')->user();
         
         $eligibility = $this->eligibilityService->checkEligibility($user, 'electricity');
         $hasActiveCard = $user->cards()->where('is_active', true)->exists();
@@ -126,74 +129,111 @@ class ElectricityController extends Controller
             'amount' => 'required|numeric|min:500|max:50000',
             'customer_name' => 'required|string',
             'address' => 'required|string',
+            'pin' => 'required|string|size:4',
+            'request_id' => 'nullable|string',
         ]);
 
         $user = $request->user();
+
+        // **SECURITY FIX 1: Check for duplicate request**
+        $requestId = $request->request_id ?: $this->generateRequestId($user->id);
+        if ($this->isDuplicateRequest($requestId, $user->id, 'electricity_purchase')) {
+            return redirect()->back()->with('error', 'This request is already being processed. Please wait.');
+        }
+
+        // **SECURITY FIX 2: Rate limiting**
+        if ($this->isRateLimited($user->id, 'electricity_purchase')) {
+            return redirect()->back()->with('error', 'Too many attempts. Please wait before trying again.');
+        }
+
+        if (!Hash::check($request->pin, $user->pin)) {
+            return redirect()->back()->withErrors(['pin' => 'Invalid PIN. Please try again.']);
+        }
+
         $provider = ElectricityProvider::findOrFail($request->electricity_provider_id);
 
+        $vat = 100;
         $fee = 100;
-        $totalAmount = $request->amount + $fee;
+        $totalAmount = $request->amount + $fee + $vat;
 
-        if ($user->wallet_balance < $totalAmount) {
-            return redirect()->back()->with('error', 'Insufficient wallet balance. Please fund your wallet.');
+        try {
+            $result = $this->processAtomicTransaction($user->id, $totalAmount, function ($lockedUser) use ($request, $provider, $totalAmount, $fee, $vat, $requestId) {
+                
+                $reference = 'ELEC' . strtoupper(Str::random(10)) . time();
+                $profit = $this->calculateProfitMargin($request->amount);
+
+                $transaction = Transaction::create([
+                    'user_id' => $lockedUser->id,
+                    'reference' => $reference,
+                    'type' => 'electricity',
+                    'amount' => $request->amount,
+                    'fee' => $fee + $vat,
+                    'profit' => $profit,
+                    'status' => 'pending',
+                    'recipient' => $request->meter_number,
+                    'description' => $provider->name . ' Electricity Bill Payment of ₦' . $request->amount . ' for ' . $request->customer_name,
+                    'meta_data' => [
+                        'provider' => $provider->name,
+                        'provider_code' => $provider->code,
+                        'meter_number' => $request->meter_number,
+                        'meter_type' => $request->meter_type,
+                        'customer_name' => $request->customer_name,
+                        'address' => $request->address,
+                        'amount' => $request->amount,
+                        'fee' => $fee,
+                        'vat' => $vat,
+                        'total_amount' => $totalAmount,
+                        'request_id' => $requestId,
+                    ],
+                ]);
+
+                // Deduct from wallet
+                $this->deductWallet($lockedUser, $totalAmount, 'electricity bill payment');
+
+                return $transaction;
+            });
+
+            $transaction = $result;
+
+            $vt = $this->datavendroService->payElectricityBill(
+                $request->meter_number,
+                $provider->code,
+                $request->amount,
+                $request->meter_type
+            );
+
+            if ($vt['success']) {
+                $transaction->status = 'successful';
+                $transaction->meta_data = array_merge($transaction->meta_data ?? [], [
+                    'datavendro' => $vt['data'] ?? [],
+                    'completed_at' => now(),
+                ]);
+                $transaction->save();
+
+                $token = $vt['data']['token'] ?? ($vt['data']['Token'] ?? ($vt['data']['POWERTOKEN'] ?? null));
+                $successMsg = 'Electricity bill payment successful!'.($token ? ' Token: '.$token : '');
+                return redirect()->route('dashboard')->with('success', $successMsg);
+            } else {
+                // API failed, refund the user using atomic helper
+                $this->failAndRefund($transaction, $user->id, $totalAmount, $vt);
+
+                return redirect()->back()->with('error', $vt['message'] ?? 'Electricity bill payment failed. Your money has been refunded.');
+            }
+
+        } catch (\Exception $e) {
+            return redirect()->back()->with('error', $e->getMessage());
+        }
+    }
+
+    protected function calculateProfitMargin($amount,$type=null)
+    {
+        $user = auth('web')->user();
+        $settings = \App\Models\Setting::first();
+
+        if ($user && $user->is_pro && $user->pro_expires_at > now()) {
+            return $amount * (($settings->pro_electricity_profit_percentage ?? 2) / 100);
         }
 
-        $reference = 'ELEC' . strtoupper(Str::random(8));
-
-        $transaction = Transaction::create([
-            'user_id' => $user->id,
-            'reference' => $reference,
-            'type' => 'electricity',
-            'amount' => $request->amount,
-            'fee' => $fee,
-            'status' => 'pending',
-            'recipient' => $request->meter_number,
-            'description' => $provider->name . ' Electricity Bill Payment of ₦' . $request->amount . ' for ' . $request->customer_name,
-            'meta_data' => [
-                'provider' => $provider->name,
-                'provider_code' => $provider->code,
-                'meter_number' => $request->meter_number,
-                'meter_type' => $request->meter_type,
-                'customer_name' => $request->customer_name,
-                'address' => $request->address,
-                'amount' => $request->amount,
-                'fee' => $fee,
-                'total_amount' => $totalAmount,
-            ],
-        ]);
-
-        $user->wallet_balance -= $totalAmount;
-        $user->save();
-
-        $vt = $this->datavendroService->payElectricityBill(
-            $request->meter_number,
-            $provider->code,
-            $request->amount,
-            $request->meter_type
-        );
-
-        if ($vt['success']) {
-            $transaction->status = 'successful';
-            $transaction->meta_data = array_merge($transaction->meta_data ?? [], [
-                'datavendro' => $vt['data'] ?? [],
-            ]);
-            $transaction->save();
-
-            $token = $vt['data']['token'] ?? ($vt['data']['Token'] ?? ($vt['data']['POWERTOKEN'] ?? null));
-            $successMsg = 'Electricity bill payment successful!'.($token ? ' Token: '.$token : '');
-            return redirect()->route('dashboard')->with('success', $successMsg);
-        } else {
-            $user->wallet_balance += $totalAmount;
-            $user->save();
-
-            $transaction->status = 'failed';
-            $transaction->meta_data = array_merge($transaction->meta_data ?? [], [
-                'error' => $vt['message'] ?? 'Payment failed',
-                'raw' => $vt['data'] ?? null,
-            ]);
-            $transaction->save();
-
-            return redirect()->back()->with('error', $vt['message'] ?? 'Electricity bill payment failed. Please try again later.');
-        }
+        return parent::calculateProfitMargin($amount, 'electricity');
     }
 }

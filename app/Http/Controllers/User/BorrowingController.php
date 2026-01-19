@@ -163,7 +163,6 @@ class BorrowingController extends AtomicController
     }
 
     /**
-<<<<<<< HEAD
      * Repay all borrowings - attempts card charge first, falls back to wallet
      */
     public function repayAll(Request $request)
@@ -190,17 +189,6 @@ class BorrowingController extends AtomicController
             $totalSettled = $this->processAtomicTransaction($user->id, 0, function ($lockedUser) {
                 return $this->borrowingService->repayAllFromCard($lockedUser);
             });
-=======
-     * Repay all borrowings from wallet.
-     */
-    public function repayAll(Request $request)
-    {
-        $user = Auth::user();
-
-        try {
-            $totalSettled = $this->borrowingService->repayFromWallet($user);
->>>>>>> b91c65d43d1f7ef7d71cc968473e9664252c7d75
-
             return back()->with('success', "Successfully settled debt totaling ₦" . number_format($totalSettled, 2));
         } catch (\Exception $e) {
             return back()->with('error', $e->getMessage());

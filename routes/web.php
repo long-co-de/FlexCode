@@ -401,10 +401,7 @@ Route::middleware(['auth', 'verified', \App\Http\Middleware\CheckActive::class])
                 Route::get('/{borrowing}', [\App\Http\Controllers\Admin\BorrowingController::class, 'show'])->name('show');
                 Route::post('/{borrowing}/trigger-repayment', [\App\Http\Controllers\Admin\BorrowingController::class, 'triggerRepayment'])->name('trigger-repayment');
                 Route::post('/{borrowing}/mark-as-paid', [\App\Http\Controllers\Admin\BorrowingController::class, 'markAsPaid'])->name('mark-as-paid');
-<<<<<<< HEAD
                 Route::post('/{borrowing}/process-payment', [\App\Http\Controllers\Admin\BorrowingController::class, 'processPayment'])->name('process-payment');
-=======
->>>>>>> b91c65d43d1f7ef7d71cc968473e9664252c7d75
                 Route::post('/{borrowing}/cancel', [\App\Http\Controllers\Admin\BorrowingController::class, 'cancel'])->name('cancel');
             });
 

@@ -245,12 +245,7 @@ export default function Dashboard({ auth, stats, userStats, transactionStats, re
                         {/* Revenue Chart */}
                         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
                             <div className="flex justify-between items-center mb-6">
-<<<<<<< HEAD
-                                <h3 className="font-medium text-gray-800">Profit Trend</h3>
-=======
-                                <h3 className="font-medium text-gray-800">Revenue Trend</h3>
->>>>>>> b91c65d43d1f7ef7d71cc968473e9664252c7d75
-                                <div className="flex items-center text-sm text-gray-500">
+                                <h3 className="font-medium text-gray-800">Profit Trend</h3>                                <div className="flex items-center text-sm text-gray-500">
                                     <BanknotesIcon className="h-4 w-4 mr-1" />
                                     Total: {formatCurrency(stats.totalRevenue)}
                                 </div>

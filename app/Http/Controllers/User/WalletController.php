@@ -267,10 +267,35 @@ class WalletController extends AtomicController
                     throw new \Exception('Invalid payment reference');
                 }
 
+<<<<<<< HEAD
                 // If already processed, return success
                 if ($walletFunding->status === 'successful') {
                     return redirect()->route('wallet')->with('success', 'Payment was successful');
                 }
+=======
+                // Update user's wallet balance (deduct the fee)
+                $user = User::find($walletFunding->user_id);
+                if ($user) {
+                    $netAmount = $walletFunding->amount - $fee;
+                    
+                    // Settle outstanding debts first
+                    $borrowingService = app(\App\Services\BorrowingService::class);
+                    $remainingAmount = $borrowingService->settleDebts($user, $netAmount);
+                    
+                    if ($remainingAmount < $netAmount) {
+                        $settledAmount = $netAmount - $remainingAmount;
+                        $notificationService = app(\App\Services\NotificationService::class);
+                        $notificationService->sendSystemNotification(
+                            $user,
+                            'Debt Automatically Settled',
+                            "₦{$settledAmount} has been deducted from your funding to settle your outstanding debt.",
+                            'info'
+                        );
+                    }
+                    
+                    $user->wallet_balance += $remainingAmount;
+                    $user->save();
+>>>>>>> b91c65d43d1f7ef7d71cc968473e9664252c7d75
 
                 // Verify payment based on the gateway
                 if ($gateway === 'paystack') {
@@ -287,12 +312,10 @@ class WalletController extends AtomicController
                         // Update wallet funding status
                         $walletFunding->status = 'successful';
 
-                        // Calculate fee based on new rules: 1.5% + 100 for 2000 and above
+                        // Calculate fee using Paystack service
+                        $paystackService = app(PaystackService::class);
                         $amount = $walletFunding->amount;
-                        $fee = ($amount * 1.5) / 100;
-                        if ($amount >= 2000) {
-                            $fee += 100;
-                        }
+                        $fee = $paystackService->calculateServiceFee($amount);
                         $walletFunding->fee = $fee;
 
                         $walletFunding->response_data = array_merge($walletFunding->response_data ?? [], [

@@ -9,6 +9,7 @@ use App\Models\WalletFunding;
 use App\Models\User;
 use App\Models\Transaction;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class WalletFundingController extends AtomicController
 {
@@ -128,9 +129,9 @@ class WalletFundingController extends AtomicController
                 if ($newStatus === 'successful') {
                     $user = User::where('id', $walletFunding->user_id)->lockForUpdate()->firstOrFail();
                     
-                    // Calculate fee based on charge percentage
-                    $chargePercentage = $walletFunding->meta_data['charge_percentage'] ?? 0;
-                    $fee = ($walletFunding->amount * $chargePercentage) / 100;
+                    // Calculate fee using Paystack service
+                    $paystackService = app(\App\Services\PaystackService::class);
+                    $fee = $paystackService->calculateServiceFee($walletFunding->amount);
                     $walletFunding->fee = $fee;
                     
                     // Update meta data
@@ -346,10 +347,47 @@ class WalletFundingController extends AtomicController
 
             // Process the payment
             return DB::transaction(function () use ($walletFunding, $amount, $paymentData, $validated) {
+                // Get Paystack service for charge calculation
+                $paystackService = app(\App\Services\PaystackService::class);
+                
+                // Get the channel/method from Paystack response
+                $channel = $paymentData['authorization']['channel'] ?? null;
+                
+                // Calculate charges based on channel
+                $chargeData = [];
+                if ($channel === 'dedicated_nuban') {
+                    $chargeData = $paystackService->calculateDedicatedAccountProfit($amount);
+                    $fee = $chargeData['total_charges'];
+                } else {
+                    $fee = $paystackService->calculateServiceFee($amount);
+                    $chargeData = ['channel' => $channel ?? 'online'];
+                }
+                
+                $netAmount = $amount - $fee;
+                
                 if ($walletFunding) {
                     // Update existing wallet funding
                     $walletFunding->status = 'successful';
-                    $walletFunding->response_data = array_merge($walletFunding->response_data ?? [], $paymentData);
+                    $walletFunding->amount = $amount;
+                    $walletFunding->fee = $fee;
+                    $walletFunding->response_data = array_merge($walletFunding->response_data ?? [], $paymentData, [
+                        'channel' => $channel,
+                        'fee' => $fee,
+                        'net_amount' => $netAmount,
+                    ]);
+                    
+                    // Store profit data in meta_data if dedicated account
+                    if ($channel === 'dedicated_nuban') {
+                        $walletFunding->meta_data = array_merge($walletFunding->meta_data ?? [], [
+                            'channel' => 'dedicated_nuban',
+                            'paystack_charge' => $chargeData['paystack_charge'],
+                            'system_profit' => $chargeData['system_profit'],
+                            'excess_to_profit' => $chargeData['excess_charge_to_profit'],
+                            'total_charges' => $fee,
+                            'net_amount' => $netAmount,
+                        ]);
+                    }
+                    
                     $walletFunding->save();
                     $user = $walletFunding->user;
                 } else {
@@ -361,26 +399,50 @@ class WalletFundingController extends AtomicController
                         throw new \Exception('User with email ' . $customerEmail . ' not found');
                     }
 
+                    // Build meta_data with charge details
+                    $metaData = ['channel' => $channel];
+                    if ($channel === 'dedicated_nuban') {
+                        $metaData['paystack_charge'] = $chargeData['paystack_charge'];
+                        $metaData['system_profit'] = $chargeData['system_profit'];
+                        $metaData['excess_to_profit'] = $chargeData['excess_charge_to_profit'];
+                    }
+                    $metaData['total_charges'] = $fee;
+                    $metaData['net_amount'] = $netAmount;
+
                     $walletFunding = WalletFunding::create([
                         'user_id' => $user->id,
                         'reference' => $validated['reference'],
                         'amount' => $amount,
                         'payment_method' => 'paystack',
                         'status' => 'successful',
-                        'response_data' => $paymentData,
-                        'fee' => 0, // Admin retrieval has no fee
+                        'fee' => $fee,
+                        'response_data' => array_merge($paymentData, [
+                            'channel' => $channel,
+                            'fee' => $fee,
+                            'net_amount' => $netAmount,
+                        ]),
+                        'meta_data' => $metaData,
                     ]);
                 }
 
-                // Calculate fee
-                $fee = 0;
-                $netAmount = $amount;
-
                 // Update transaction
+                $transactionMetaData = [
+                    'admin_verified' => true,
+                    'channel' => $channel,
+                    'fees' => $fee,
+                ];
+                
+                if ($channel === 'dedicated_nuban') {
+                    $transactionMetaData['paystack_charge'] = $chargeData['paystack_charge'];
+                    $transactionMetaData['system_profit'] = $chargeData['system_profit'];
+                    $transactionMetaData['excess_to_profit'] = $chargeData['excess_charge_to_profit'];
+                }
+                
                 $transaction = Transaction::where('reference', $validated['reference'])->lockForUpdate()->first();
                 if ($transaction) {
                     $transaction->status = 'successful';
                     $transaction->fee = $fee;
+                    $transaction->meta_data = array_merge($transaction->meta_data ?? [], $transactionMetaData);
                     $transaction->save();
                 } else {
                     // Create transaction if it doesn't exist
@@ -392,20 +454,21 @@ class WalletFundingController extends AtomicController
                         'type' => 'wallet_funding',
                         'status' => 'successful',
                         'payment_method' => 'paystack',
-                        'metadata' => ['admin_verified' => true],
+                        'meta_data' => $transactionMetaData,
                     ]);
                 }
 
-                // Credit user wallet
-                $remainingAmount = $amount;
+                // Credit user wallet with net amount after fees
+                $remainingAmount = $netAmount;
 
                 // Settle outstanding debts first
                 $borrowingService = app(\App\Services\BorrowingService::class);
-                $settledAmount = $amount - $borrowingService->settleDebts($user, $amount);
-                $remainingAmount = $amount - $settledAmount;
+                $debtRemaining = $borrowingService->settleDebts($user, $netAmount);
+                $settledAmount = $netAmount - $debtRemaining;
+                $remainingAmount = $debtRemaining;
 
                 if ($settledAmount > 0) {
-                    \Log::info('Debt settled', [
+                    Log::info('Debt settled', [
                         'user_id' => $user->id,
                         'amount' => $settledAmount,
                         'method' => 'admin_payment_retrieval'
@@ -416,12 +479,20 @@ class WalletFundingController extends AtomicController
                 $user->wallet_balance += $remainingAmount;
                 $user->save();
 
-                // Send notification
+                // Send notification with fee details if applicable
                 $notificationService = app(\App\Services\NotificationService::class);
+                $notificationMessage = "Your Paystack payment of ₦" . number_format($amount, 2) . " (Reference: {$validated['reference']}) has been successfully verified and processed by an administrator.";
+                
+                if ($fee > 0) {
+                    $notificationMessage .= " Service fee of ₦" . number_format($fee, 2) . " was deducted. ";
+                }
+                
+                $notificationMessage .= "₦" . number_format($remainingAmount, 2) . " has been credited to your wallet.";
+                
                 $notificationService->sendSystemNotification(
                     $user,
                     'Payment Retrieved and Processed',
-                    "Your Paystack payment of ₦{$amount} (Reference: {$validated['reference']}) has been successfully verified and processed by an administrator. ₦{$remainingAmount} has been credited to your wallet.",
+                    $notificationMessage,
                     'success'
                 );
 
@@ -441,7 +512,7 @@ class WalletFundingController extends AtomicController
                 ]);
             });
         } catch (\Exception $e) {
-            \Log::error('Admin payment retrieval failed', [
+            Log::error('Admin payment retrieval failed', [
                 'reference' => $validated['reference'] ?? null,
                 'error' => $e->getMessage(),
             ]);

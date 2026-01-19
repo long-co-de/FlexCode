@@ -1,6 +1,10 @@
 import { Head, Link } from '@inertiajs/react';
 import AgentLayout from '@/Layouts/AgentLayout';
+<<<<<<< HEAD
 import { PhoneIcon, TvIcon, LightBulbIcon } from '@heroicons/react/24/outline';
+=======
+import { PhoneIcon, TvIcon, LightBulbIcon, ToggleIcon } from '@heroicons/react/24/outline';
+>>>>>>> b91c65d43d1f7ef7d71cc968473e9664252c7d75
 
 export default function DataPlans({ auth, dataPlans }) {
     const formatNumber = (num) => {

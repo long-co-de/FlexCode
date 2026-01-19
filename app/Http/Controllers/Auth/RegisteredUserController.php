@@ -32,9 +32,35 @@ class RegisteredUserController extends Controller
      */
     public function store(Request $request): RedirectResponse
     {
+        // List of allowed email domains
+        $allowedDomains = [
+            'gmail.com',
+            'icloud.com',
+            'outlook.com',
+            'yahoo.com',
+            'yahoo.co.uk',
+            'hotmail.com',
+            'aol.com',
+            'mail.com',
+            'protonmail.com',
+            'zoho.com',
+        ];
+
         $request->validate([
             'name' => 'required|string|max:255',
-            'email' => 'required|string|email|max:255|unique:'.User::class,
+            'email' => [
+                'required',
+                'string',
+                'email',
+                'max:255',
+                'unique:'.User::class,
+                function ($attribute, $value, $fail) use ($allowedDomains) {
+                    $emailDomain = strtolower(substr(strrchr($value, "@"), 1));
+                    if (!in_array($emailDomain, $allowedDomains)) {
+                        $fail('Email domain is not supported. Please use a known email provider (Gmail, iCloud, Outlook, Yahoo, etc.)');
+                    }
+                },
+            ],
             'phone_number' => 'required|string|max:20|unique:'.User::class,
             'password' => ['required', 'confirmed', Rules\Password::defaults()],
             'referral_code' => 'nullable|string|exists:users,referral_code',

@@ -34,12 +34,12 @@ class ElectricityController extends AtomicController
     public function index()
     {
         $user = auth('web')->user();
-        
+
         $eligibility = $this->eligibilityService->checkEligibility($user, 'electricity');
         $hasActiveCard = $user->cards()->where('is_active', true)->exists();
-        
+
         $electricityProviders = ElectricityProvider::where('is_active', true)->get();
-        
+
         $beneficiaries = Beneficiary::where('user_id', $user->id)
             ->where('service_type', 'electricity')
             ->orderBy('is_favorite', 'desc')
@@ -64,6 +64,7 @@ class ElectricityController extends AtomicController
             }
         }
 
+        return back()->with('info', 'this service is temporarily unavailable at the moment. We are working to restore it as soon as possible.');
         return Inertia::render('User/Electricity', [
             'electricityProviders' => $electricityProviders,
             'beneficiaries' => $beneficiaries,
@@ -132,6 +133,7 @@ class ElectricityController extends AtomicController
             'pin' => 'required|string|size:4',
             'request_id' => 'nullable|string',
         ]);
+        return back()->with('info', 'this service is temporarily unavailable at the moment. We are working to restore it as soon as possible.');
 
         $user = $request->user();
 
@@ -158,7 +160,7 @@ class ElectricityController extends AtomicController
 
         try {
             $result = $this->processAtomicTransaction($user->id, $totalAmount, function ($lockedUser) use ($request, $provider, $totalAmount, $fee, $vat, $requestId) {
-                
+
                 $reference = 'ELEC' . strtoupper(Str::random(10)) . time();
                 $profit = $this->calculateProfitMargin($request->amount);
 
@@ -211,7 +213,7 @@ class ElectricityController extends AtomicController
                 $transaction->save();
 
                 $token = $vt['data']['token'] ?? ($vt['data']['Token'] ?? ($vt['data']['POWERTOKEN'] ?? null));
-                $successMsg = 'Electricity bill payment successful!'.($token ? ' Token: '.$token : '');
+                $successMsg = 'Electricity bill payment successful!' . ($token ? ' Token: ' . $token : '');
                 return redirect()->route('dashboard')->with('success', $successMsg);
             } else {
                 // API failed, refund the user using atomic helper
@@ -219,13 +221,12 @@ class ElectricityController extends AtomicController
 
                 return redirect()->back()->with('error', $vt['message'] ?? 'Electricity bill payment failed. Your money has been refunded.');
             }
-
         } catch (\Exception $e) {
             return redirect()->back()->with('error', $e->getMessage());
         }
     }
 
-    protected function calculateProfitMargin($amount,$type=null)
+    protected function calculateProfitMargin($amount, $type = null)
     {
         $user = auth('web')->user();
         $settings = \App\Models\Setting::first();

@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Models\Transaction;
 use App\Models\WalletFunding;
 use App\Models\UserCard;
+use App\Models\SystemProfit;
 use Exception;
 
 class PaystackService
@@ -22,6 +23,67 @@ class PaystackService
         $this->secretKey = config('services.paystack.secret_key') ?? Setting::where('key', 'paystack_secret_key')->value('value');
         $this->publicKey = config('services.paystack.public_key') ?? Setting::where('key', 'paystack_public_key')->value('value');
         $this->baseUrl = 'https://api.paystack.co';
+    }
+
+    /**
+     * Calculate Paystack service fees based on amount and rules
+     * 
+     * Rules:
+     * - 1.5% of the amount
+     * - Plus ₦100 for amounts >= ₦2,000
+     * 
+     * @param float $amount The transaction amount in Naira
+     * @return float The calculated service fee
+     */
+    public function calculateServiceFee($amount)
+    {
+        $fee = ($amount * 1.5) / 100;
+        if ($amount >= 2000) {
+            $fee += 100;
+        }
+        return $fee;
+    }
+
+    /**
+     * Calculate dedicated virtual account charges and profit
+     * 
+     * For dedicated_nuban channel:
+     * - Paystack charge: 1% (capped at 300)
+     * - If 1% exceeds 300, the excess goes to system profit
+     * - Base system profit: 0.5%
+     * - Any excess from Paystack charge cap is added to system profit
+     * 
+     * @param float $amount The transaction amount in Naira
+     * @return array Contains 'paystack_charge', 'system_profit', 'total_charges', 'net_amount'
+     */
+    public function calculateDedicatedAccountProfit($amount)
+    {
+        // Calculate 1% charge
+        $onePercentCharge = ($amount * 1.0) / 100;
+        
+        // Paystack takes maximum of 300
+        $paystackCharge = min($onePercentCharge, 300);
+        
+        // Any amount over 300 goes to system profit
+        $excessCharge = max(0, $onePercentCharge - 300);
+        
+        // Base system profit is 0.5% plus any excess from Paystack cap
+        $baseSystemProfit = ($amount * 0.5) / 100;
+        $systemProfit = $baseSystemProfit + $excessCharge;
+        
+        // Total charges and net amount
+        $totalCharges = $paystackCharge + $systemProfit;
+        $netAmount = $amount - $totalCharges;
+
+        return [
+            'paystack_charge' => $paystackCharge,
+            'paystack_charge_capped_at' => 300,
+            'excess_charge_to_profit' => $excessCharge,
+            'system_profit' => $systemProfit,
+            'system_profit_base' => $baseSystemProfit,
+            'total_charges' => $totalCharges,
+            'net_amount' => $netAmount,
+        ];
     }
 
     /**
@@ -706,11 +768,8 @@ class PaystackService
                     ];
                 }
 
-                // Calculate fee based on new rules: 1.5% + 100 for 2000 and above
-                $fee = ($amount * 1.5) / 100;
-                if ($amount >= 2000) {
-                    $fee += 100;
-                }
+                // Calculate fee using the service fee calculator
+                $fee = $this->calculateServiceFee($amount);
                 $netAmount = $amount - $fee;
 
                 // Update wallet funding status
@@ -754,6 +813,29 @@ class PaystackService
 
                     $user->wallet_balance += $remainingAmount;
                     $user->save();
+
+                    // Calculate and record system profit (5% of deposit amount)
+                    $profitPercentage = 5.00; // Fixed 5% profit for all wallet deposits
+                    $profitAmount = ($amount * $profitPercentage) / 100;
+                    
+                    // Create system profit record
+                    SystemProfit::create([
+                        'user_id' => $user->id,
+                        'transaction_id' => $transaction->id,
+                        'wallet_funding_id' => $walletFunding->id,
+                        'profit_source' => 'paystack_wallet_deposit',
+                        'amount' => $amount,
+                        'profit_percentage' => $profitPercentage,
+                        'profit_amount' => $profitAmount,
+                        'status' => 'recorded',
+                        'description' => "5% profit from Paystack wallet deposit of ₦{$amount}",
+                        'meta_data' => [
+                            'payment_reference' => $reference,
+                            'payment_method' => 'paystack',
+                            'fee' => $fee,
+                            'net_amount' => $netAmount,
+                        ],
+                    ]);
 
                     // Process referral bonus
                     $referralService = app(\App\Services\ReferralService::class);
@@ -846,11 +928,16 @@ class PaystackService
                     ];
                 }
 
-                // Calculate fee: 1.5% for virtual account
-                $fee = ($amount * 1.5) / 100;
-                $netAmount = $amount - $fee;
+                // Calculate charges and profit using the dedicated account calculator
+                $profitData = $this->calculateDedicatedAccountProfit($amount);
+                $paystackCharge = $profitData['paystack_charge'];
+                $excessCharge = $profitData['excess_charge_to_profit'];
+                $systemProfitAmount = $profitData['system_profit'];
+                $systemProfitBase = $profitData['system_profit_base'];
+                $totalCharges = $profitData['total_charges'];
+                $netAmount = $profitData['net_amount'];
 
-                // Create or update wallet funding record
+                // Create or update wallet funding record with profit details
                 $paymentMethodId = \App\Models\PaymentMethod::where('name', 'LIKE', '%Paystack%')->value('id');
 
                 $walletFunding = WalletFunding::updateOrCreate(
@@ -859,14 +946,33 @@ class PaystackService
                         'user_id' => $user->id,
                         'payment_method_id' => $paymentMethodId,
                         'amount' => $amount,
-                        'fee' => $fee,
+                        'fee' => $totalCharges,
                         'status' => 'successful',
                         'response_data' => array_merge($data, [
                             'completed_at' => now(),
-                            'fee' => $fee,
+                            'paystack_charge' => $paystackCharge,
+                            'excess_charge_to_profit' => $excessCharge,
+                            'system_profit' => $systemProfitAmount,
+                            'system_profit_base' => $systemProfitBase,
+                            'total_charges' => $totalCharges,
                             'net_amount' => $netAmount,
-                            'type' => 'dedicated_virtual_account'
+                            'type' => 'dedicated_virtual_account',
+                            'channel' => 'dedicated_nuban',
                         ]),
+                        'meta_data' => [
+                            'channel' => 'dedicated_nuban',
+                            'paystack_charge' => $paystackCharge,
+                            'paystack_charge_percentage' => 1.0,
+                            'paystack_charge_cap' => 300,
+                            'excess_charge_to_profit' => $excessCharge,
+                            'system_profit_base' => $systemProfitBase,
+                            'system_profit_base_percentage' => 0.5,
+                            'system_profit_total' => $systemProfitAmount,
+                            'total_charges' => $totalCharges,
+                            'net_amount' => $netAmount,
+                            'profit_recorded' => true,
+                            'completed_at' => now()->toIso8601String(),
+                        ],
                     ]
                 );
 
@@ -877,14 +983,21 @@ class PaystackService
                         'user_id' => $user->id,
                         'type' => 'wallet_funding',
                         'amount' => $amount,
-                        'fee' => $fee,
+                        'fee' => $totalCharges,
                         'status' => 'successful',
                         'recipient' => $user->email,
                         'description' => 'Dedicated Virtual Account Funding of ₦' . number_format($amount, 2),
                         'meta_data' => [
                             'payment_method' => 'paystack_virtual_account',
                             'channel' => 'dedicated_nuban',
-                            'fee' => $fee,
+                            'paystack_charge' => $paystackCharge,
+                            'paystack_charge_percentage' => 1.0,
+                            'paystack_charge_cap' => 300,
+                            'excess_charge_to_profit' => $excessCharge,
+                            'system_profit_base' => $systemProfitBase,
+                            'system_profit_base_percentage' => 0.5,
+                            'system_profit_total' => $systemProfitAmount,
+                            'total_charges' => $totalCharges,
                             'net_amount' => $netAmount,
                         ],
                     ]
@@ -907,6 +1020,34 @@ class PaystackService
 
                 $user->wallet_balance += $remainingAmount;
                 $user->save();
+
+                // Calculate and record system profit
+                $systemProfitPercentage = 0.5;
+                SystemProfit::create([
+                    'user_id' => $user->id,
+                    'transaction_id' => $transaction->id,
+                    'wallet_funding_id' => $walletFunding->id,
+                    'profit_source' => 'paystack_virtual_account',
+                    'amount' => $amount,
+                    'profit_percentage' => $systemProfitPercentage + ($excessCharge / $amount * 100),
+                    'profit_amount' => $systemProfitAmount,
+                    'status' => 'recorded',
+                    'description' => "System profit from Paystack dedicated virtual account deposit of ₦{$amount} (0.5% base + ₦" . number_format($excessCharge, 2) . " excess)",
+                    'meta_data' => [
+                        'payment_reference' => $reference,
+                        'payment_method' => 'paystack',
+                        'channel' => 'dedicated_nuban',
+                        'paystack_charge' => $paystackCharge,
+                        'paystack_charge_percentage' => 1.0,
+                        'paystack_charge_cap' => 300,
+                        'system_profit_base' => $systemProfitBase,
+                        'system_profit_base_percentage' => $systemProfitPercentage,
+                        'excess_charge_to_profit' => $excessCharge,
+                        'system_profit_total' => $systemProfitAmount,
+                        'system_profit_total_percentage' => ($systemProfitAmount / $amount * 100),
+                        'net_amount' => $netAmount,
+                    ],
+                ]);
 
                 // Process referral bonus
                 $referralService = app(\App\Services\ReferralService::class);

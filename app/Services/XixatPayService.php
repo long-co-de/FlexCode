@@ -302,5 +302,89 @@ class XixatPayService
         } finally {
             $lock->release();
         }
+<<<<<<< HEAD
+=======
+
+        // Calculate charge percentage based on settings
+        $chargePercentage = (float) Setting::get('virtual_bank_deposit_charge', 0);
+        
+        // Create wallet funding record
+        $walletFunding = WalletFunding::create([
+            'user_id' => $user->id,
+            'reference' => $reference,
+            'amount' => $amount,
+            'payment_method' => 'Xixat Pay Dedicated Bank Account',
+            'status' => 'successful',
+            'fee' => $settlementFee,
+            'meta_data' => [
+                'payment_reference' => $transactionId,
+                'payment_method' => 'virtual_account',
+                'payment_provider' => 'xixatpay',
+                'charge_percentage' => $chargePercentage,
+                'original_amount' => $amount,
+                'settlement_amount' => $settlementAmount,
+                'settlement_fee' => $settlementFee,
+                'sender' => $data['sender'] ?? [],
+                'receiver' => $data['receiver'] ?? [],
+                'timestamp' => $timestamp,
+                'completed_at' => now(),
+            ],
+        ]);
+
+        // Create transaction record
+        $transaction = Transaction::create([
+            'user_id' => $user->id,
+            'reference' => $reference,
+            'type' => 'wallet_funding',
+            'amount' => $amount,
+            'fee' => $settlementFee,
+            'status' => 'successful',
+            'recipient' => $user->email,
+            'description' => 'Wallet Funding of ₦' . $amount . ' via Xixat Pay Dedicated Bank Account',
+            'meta_data' => [
+                'payment_method' => 'Xixat Pay Dedicated Bank Account',
+                'wallet_funding_id' => $walletFunding->id,
+                'payment_reference' => $transactionId,
+                'charge_percentage' => $chargePercentage,
+            ],
+        ]);
+
+        // Update user's wallet balance
+        $netAmount = $settlementAmount;
+        
+        // Settle outstanding debts first
+        $borrowingService = app(\App\Services\BorrowingService::class);
+        $remainingAmount = $borrowingService->settleDebts($user, $netAmount);
+        
+        if ($remainingAmount < $netAmount) {
+            $settledAmount = $netAmount - $remainingAmount;
+            $notificationService = app(NotificationService::class);
+            $notificationService->sendSystemNotification(
+                $user,
+                'Debt Automatically Settled',
+                "₦{$settledAmount} has been deducted from your virtual account deposit to settle your outstanding debt.",
+                'info'
+            );
+        }
+        
+        $user->wallet_balance += $remainingAmount;
+        $user->save();
+
+        // Send notification about the fee if needed
+        if ($settlementFee > 0) {
+            $notificationService = app(NotificationService::class);
+            $notificationService->sendSystemNotification(
+                $user,
+                'Wallet Funding Fee Applied',
+                "A service fee of ₦{$settlementFee} has been deducted from your wallet funding of ₦{$amount}. Net amount credited: ₦{$settlementAmount}.",
+                'info'
+            );
+        }
+
+        return [
+            'success' => true,
+            'message' => 'Transaction processed successfully',
+        ];
+>>>>>>> b91c65d43d1f7ef7d71cc968473e9664252c7d75
     }
 }

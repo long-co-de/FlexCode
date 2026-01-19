@@ -257,9 +257,15 @@ export default function Airtime({ auth, networks, beneficiaries = [] }) {
                         <div className="lg:col-span-8 space-y-6">
                             <form onSubmit={handleSubmit} className="space-y-6">
                                 {/* Airtime Type */}
+<<<<<<< HEAD
                                 <div className="bg-white dark:bg-slate-800 rounded-3xl p-6 shadow-sm border border-slate-100 dark:border-slate-700">
                                     <h4 className="text-sm font-bold text-slate-800 dark:text-slate-100 mb-4 flex items-center gap-2">
                                         <FaTag className="text-sky-500 dark:text-sky-400" />
+=======
+                                <div className="bg-white hidden rounded-3xl p-6 shadow-sm border border-slate-100">
+                                    <h4 className="text-sm font-bold text-slate-800 mb-4 flex items-center gap-2">
+                                        <FaTag className="text-sky-500" />
+>>>>>>> b91c65d43d1f7ef7d71cc968473e9664252c7d75
                                         Select Airtime Type
                                     </h4>
                                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

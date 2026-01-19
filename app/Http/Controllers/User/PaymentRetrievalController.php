@@ -86,24 +86,39 @@ class PaymentRetrievalController extends AtomicController
                 $amount = $paymentData['amount'] / 100; // Convert from kobo to naira
 
                 // Calculate charges based on payment channel/method
-                $charges = $this->calculateCharges($amount, $paymentData);
+                $chargeData = $this->calculateCharges($amount, $paymentData);
+                $charges = $chargeData['charge'];
                 $amountAfterCharges = $amount - $charges;
+                
+                // Build meta data with charge details
+                $metaData = [
+                    'paystack_reference' => $reference,
+                    'paystack_authorization_code' => $paymentData['authorization']['authorization_code'] ?? null,
+                    'payment_method' => 'paystack',
+                    'customer_email' => $paymentData['customer']['email'],
+                    'order_id' => $paymentData['order_id'] ?? null,
+                    'paid_at' => $paymentData['paid_at'],
+                    'request_id' => $requestId,
+                    'channel' => $chargeData['channel'] ?? null,
+                    'fees' => $charges,
+                ];
+                
+                // Add profit data if available (dedicated accounts)
+                if ($chargeData['channel'] === 'dedicated_nuban') {
+                    $metaData['paystack_charge'] = $chargeData['paystack_charge'];
+                    $metaData['system_profit'] = $chargeData['system_profit'];
+                    $metaData['excess_to_profit'] = $chargeData['excess_to_profit'];
+                }
+                
                 $transaction = Transaction::create([
                     'user_id' => $lockedUser->id,
                     'reference' => $reference,
                     'type' => 'wallet_funding',
                     'amount' => $amount,
+                    'fee' => $charges,
                     'status' => 'successful',
                     'description' => 'Manual payment retrieval from reference: ' . $reference,
-                    'meta_data' => [
-                        'paystack_reference' => $reference,
-                        'paystack_authorization_code' => $paymentData['authorization']['authorization_code'] ?? null,
-                        'payment_method' => 'paystack',
-                        'customer_email' => $paymentData['customer']['email'],
-                        'order_id' => $paymentData['order_id'] ?? null,
-                        'paid_at' => $paymentData['paid_at'],
-                        'request_id' => $requestId,
-                    ],
+                    'meta_data' => $metaData,
                 ]);
 
                 // Credit user's wallet using helper
@@ -144,28 +159,34 @@ class PaymentRetrievalController extends AtomicController
 
     /**
      * Calculate charges based on payment method/channel from Paystack
+     * Uses centralized PaystackService for consistent fee calculation
      * 
      * @param float $amount
      * @param array $paymentData
-     * @return float
+     * @return array Returns ['charge' => float, 'profit' => float, 'channel' => string]
      */
     private function calculateCharges($amount, $paymentData)
     {
         // Get the channel/method from Paystack response
         $channel = $paymentData['authorization']['channel'] ?? null;
-        $isBank = $paymentData['authorization']['bank'] ?? null;
-
-        // Dedicated bank account: 1.5% only
-        if ($channel === 'bank' || $isBank) {
-            return (1.5 / 100) * $amount;
+        
+        // Dedicated virtual account: Use dedicated profit calculator
+        if ($channel === 'dedicated_nuban') {
+            $profitData = $this->paystackService->calculateDedicatedAccountProfit($amount);
+            return [
+                'charge' => $profitData['total_charges'],
+                'paystack_charge' => $profitData['paystack_charge'],
+                'system_profit' => $profitData['system_profit'],
+                'excess_to_profit' => $profitData['excess_charge_to_profit'],
+                'channel' => 'dedicated_nuban',
+            ];
         }
-
-        // Online normal checkout (card, ussd, etc.): 1.5% + 100 if amount >= 2000
-        if ($amount >= 2000) {
-            return (1.5 / 100) * $amount + 100;
-        }
-
-        // Default: 1.5%
-        return (1.5 / 100) * $amount;
+        
+        // Regular online channels (card, ussd, etc.): Use standard service fee
+        $charge = $this->paystackService->calculateServiceFee($amount);
+        return [
+            'charge' => $charge,
+            'channel' => $channel ?? 'online',
+        ];
     }
 }

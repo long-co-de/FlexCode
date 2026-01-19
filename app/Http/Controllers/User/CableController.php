@@ -43,6 +43,7 @@ class CableController extends AtomicController
             ->orderBy('is_favorite', 'desc')
             ->orderBy('name')
             ->get();
+        return back()->with('info', 'this service is temporarily unavailable at the moment. We are working to restore it as soon as possible.');
 
         return Inertia::render('User/Cable', [
             'cableProviders' => $cableProviders,
@@ -110,6 +111,8 @@ class CableController extends AtomicController
      */
     public function purchase(Request $request)
     {
+        return back()->with('info', 'this service is temporarily unavailable at the moment. We are working to restore it as soon as possible.');
+
         $request->validate([
             'cable_provider_id' => 'required|exists:cable_providers,id',
             'cable_plan_id' => 'required|exists:cable_plans,id',
@@ -147,7 +150,7 @@ class CableController extends AtomicController
 
         try {
             $result = $this->processAtomicTransaction($user->id, $cablePlan->selling_price, function ($lockedUser) use ($request, $provider, $cablePlan, $requestId) {
-                
+
                 $reference = 'CABLE' . strtoupper(Str::random(10)) . time();
                 $profit = $this->calculateProfitMargin($cablePlan->selling_price);
 
@@ -219,15 +222,14 @@ class CableController extends AtomicController
 
                 return redirect()->back()->with('error', $response['message'] ?? 'Cable subscription failed. Your money has been refunded.');
             }
-
         } catch (\Exception $e) {
             return redirect()->back()->with('error', $e->getMessage());
         }
     }
 
-    protected function calculateProfitMargin($amount,$type=null)
+    protected function calculateProfitMargin($amount, $type = null)
     {
-       
+
 
         // Otherwise use regular profit margin
         return parent::calculateProfitMargin($amount, 'cable');

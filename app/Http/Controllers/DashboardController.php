@@ -54,29 +54,10 @@ class DashboardController extends Controller
             ->pluck('count', 'type')
             ->toArray();
 
-        // Get borrowing data
-        $eligibility = $user->borrowingEligibility;
-        $borrowingSummary = [
-            'total_borrowed' => $user->borrowings()->sum('amount'),
-            'total_repaid' => $user->borrowings()->where('status', 'paid')->sum('amount'),
-            'active_borrowings' => $user->activeBorrowings()->count(),
-            'overdue_borrowings' => $user->overdueBorrowings()->count(),
-            'next_due_date' => $user->borrowings()->whereIn('status', ['active', 'overdue'])->min('due_date'),
-            'total_due' => $user->borrowings()->whereIn('status', ['active', 'overdue'])->sum('total_amount'),
-        ];
-
-        // Get referral statistics
-        $referralService = app(ReferralService::class);
-        $referralStats = $referralService->getReferralStats($user);
-
         return Inertia::render('Dashboard', [
             'recentTransactions' => $recentTransactions,
             'transactionStats' => $transactionStats,
             'serviceUsage' => $serviceUsage,
-            'eligibility' => $eligibility,
-            'borrowingSummary' => $borrowingSummary,
-            'referralStats' => $referralStats,
-            'has_card' => $user->cards()->exists(),
         ]);
     }
 

@@ -2,20 +2,21 @@
 
 namespace App\Services;
 
+use App\Models\Setting;
+use App\Models\SystemProfit;
+use App\Models\Transaction;
+use App\Models\User;
+use App\Models\WalletFunding;
+use Exception;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
-use App\Models\Setting;
-use App\Models\User;
-use App\Models\Transaction;
-use App\Models\WalletFunding;
-use App\Models\UserCard;
-use App\Models\SystemProfit;
-use Exception;
 
 class PaystackService
 {
     protected $secretKey;
+
     protected $publicKey;
+
     protected $baseUrl;
 
     public function __construct()
@@ -27,12 +28,12 @@ class PaystackService
 
     /**
      * Calculate Paystack service fees based on amount and rules
-     * 
+     *
      * Rules:
      * - 1.5% of the amount
      * - Plus ₦100 for amounts >= ₦2,000
-     * 
-     * @param float $amount The transaction amount in Naira
+     *
+     * @param  float  $amount  The transaction amount in Naira
      * @return float The calculated service fee
      */
     public function calculateServiceFee($amount)
@@ -41,36 +42,37 @@ class PaystackService
         if ($amount >= 2000) {
             $fee += 100;
         }
+
         return $fee;
     }
 
     /**
      * Calculate dedicated virtual account charges and profit
-     * 
+     *
      * For dedicated_nuban channel:
      * - Paystack charge: 1% (capped at 300)
      * - If 1% exceeds 300, the excess goes to system profit
      * - Base system profit: 0.5%
      * - Any excess from Paystack charge cap is added to system profit
-     * 
-     * @param float $amount The transaction amount in Naira
+     *
+     * @param  float  $amount  The transaction amount in Naira
      * @return array Contains 'paystack_charge', 'system_profit', 'total_charges', 'net_amount'
      */
     public function calculateDedicatedAccountProfit($amount)
     {
         // Calculate 1% charge
         $onePercentCharge = ($amount * 1.0) / 100;
-        
+
         // Paystack takes maximum of 300
         $paystackCharge = min($onePercentCharge, 300);
-        
+
         // Any amount over 300 goes to system profit
         $excessCharge = max(0, $onePercentCharge - 300);
-        
+
         // Base system profit is 0.5% plus any excess from Paystack cap
         $baseSystemProfit = ($amount * 0.5) / 100;
         $systemProfit = $baseSystemProfit + $excessCharge;
-        
+
         // Total charges and net amount
         $totalCharges = $paystackCharge + $systemProfit;
         $netAmount = $amount - $totalCharges;
@@ -93,9 +95,9 @@ class PaystackService
     {
         try {
             $response = Http::withHeaders([
-                'Authorization' => 'Bearer ' . $this->secretKey,
+                'Authorization' => 'Bearer '.$this->secretKey,
                 'Accept' => 'application/json',
-            ])->post($this->baseUrl . '/transaction/initialize', [
+            ])->post($this->baseUrl.'/transaction/initialize', [
                 'amount' => $amount * 100, // Paystack amount is in kobo
                 'email' => $email,
                 'reference' => $reference,
@@ -120,7 +122,8 @@ class PaystackService
                 'message' => $response->json()['message'] ?? 'Failed to initialize transaction',
             ];
         } catch (Exception $e) {
-            Log::error('Paystack API Error: ' . $e->getMessage());
+            Log::error('Paystack API Error: '.$e->getMessage());
+
             return [
                 'success' => false,
                 'message' => 'An error occurred while connecting to the payment gateway',
@@ -136,10 +139,10 @@ class PaystackService
         try {
             // disable ssl verification for this url or requested URL
             $response = Http::withHeaders([
-                'Authorization' => 'Bearer ' . $this->secretKey,
+                'Authorization' => 'Bearer '.$this->secretKey,
                 'Accept' => 'application/json',
                 'verify' => false, // Disable SSL verification for this request only
-            ])->get($this->baseUrl . '/transaction/verify/' . $reference);
+            ])->withoutVerifying()->get($this->baseUrl.'/transaction/verify/'.$reference);
 
             if ($response->successful()) {
                 $data = $response->json()['data'] ?? [];
@@ -161,7 +164,8 @@ class PaystackService
                 'message' => $response->json()['message'] ?? 'Failed to verify transaction',
             ];
         } catch (Exception $e) {
-            Log::error('Paystack API Error: ' . $e->getMessage());
+            Log::error('Paystack API Error: '.$e->getMessage());
+
             return [
                 'success' => false,
                 'message' => 'An error occurred while connecting to the payment gateway',
@@ -177,9 +181,9 @@ class PaystackService
         try {
             // First, verify the authorization
             $response = Http::withHeaders([
-                'Authorization' => 'Bearer ' . $this->secretKey,
+                'Authorization' => 'Bearer '.$this->secretKey,
                 'Accept' => 'application/json',
-            ])->get($this->baseUrl . '/transaction/verify/' . $authorizationCode);
+            ])->get($this->baseUrl.'/transaction/verify/'.$authorizationCode);
 
             if ($response->successful()) {
                 $data = $response->json()['data'] ?? [];
@@ -209,7 +213,8 @@ class PaystackService
                 'message' => 'Card verification failed',
             ];
         } catch (Exception $e) {
-            Log::error('Paystack Card Verification Error: ' . $e->getMessage());
+            Log::error('Paystack Card Verification Error: '.$e->getMessage());
+
             return [
                 'success' => false,
                 'message' => 'An error occurred while verifying card',
@@ -224,13 +229,13 @@ class PaystackService
     {
         try {
             $response = Http::withHeaders([
-                'Authorization' => 'Bearer ' . $this->secretKey,
+                'Authorization' => 'Bearer '.$this->secretKey,
                 'Accept' => 'application/json',
-            ])->post($this->baseUrl . '/transaction/charge_authorization', [
+            ])->post($this->baseUrl.'/transaction/charge_authorization', [
                 'authorization_code' => $authorizationCode,
                 'email' => $email,
                 'amount' => $amount * 100, // Convert to kobo
-                'reference' => 'CHG_' . time() . '_' . uniqid(),
+                'reference' => 'CHG_'.time().'_'.uniqid(),
                 'metadata' => [
                     'reason' => $reason,
                     'timestamp' => now()->toDateTimeString(),
@@ -264,7 +269,8 @@ class PaystackService
                 'message' => $response->json()['message'] ?? 'Failed to charge card',
             ];
         } catch (Exception $e) {
-            Log::error('Paystack Charge Authorization Error: ' . $e->getMessage());
+            Log::error('Paystack Charge Authorization Error: '.$e->getMessage());
+
             return [
                 'success' => false,
                 'message' => 'An error occurred while charging card',
@@ -279,9 +285,9 @@ class PaystackService
     {
         try {
             $response = Http::withHeaders([
-                'Authorization' => 'Bearer ' . $this->secretKey,
+                'Authorization' => 'Bearer '.$this->secretKey,
                 'Accept' => 'application/json',
-            ])->get($this->baseUrl . '/transaction', [
+            ])->get($this->baseUrl.'/transaction', [
                 'customer' => $customerCode,
             ]);
 
@@ -297,7 +303,8 @@ class PaystackService
                 'message' => 'Failed to fetch transactions',
             ];
         } catch (Exception $e) {
-            Log::error('Paystack Error: ' . $e->getMessage());
+            Log::error('Paystack Error: '.$e->getMessage());
+
             return [
                 'success' => false,
                 'message' => 'An error occurred',
@@ -321,7 +328,7 @@ class PaystackService
                 'email' => $user->email,
             ]);
 
-            if (!$phone) {
+            if (! $phone) {
                 return [
                     'success' => false,
                     'message' => 'Valid phone number is required. Please update your profile with a valid phone number.',
@@ -339,9 +346,9 @@ class PaystackService
             Log::info('Paystack createCustomer - Request payload', $payload);
 
             $response = Http::withHeaders([
-                'Authorization' => 'Bearer ' . $this->secretKey,
+                'Authorization' => 'Bearer '.$this->secretKey,
                 'Accept' => 'application/json',
-            ])->post($this->baseUrl . '/customer', $payload);
+            ])->post($this->baseUrl.'/customer', $payload);
 
             Log::info('Paystack createCustomer - Response status', [
                 'status' => $response->status(),
@@ -376,9 +383,10 @@ class PaystackService
                 'details' => $errorData['meta']['nextStep'] ?? null,
             ];
         } catch (Exception $e) {
-            Log::error('Paystack Error: ' . $e->getMessage(), [
+            Log::error('Paystack Error: '.$e->getMessage(), [
                 'trace' => $e->getTraceAsString(),
             ]);
+
             return [
                 'success' => false,
                 'message' => 'An error occurred',
@@ -391,7 +399,7 @@ class PaystackService
         try {
             // First, ensure the user is a customer on Paystack
             $customerResponse = $this->createCustomer($user);
-            if (!$customerResponse['success']) {
+            if (! $customerResponse['success']) {
                 return $customerResponse;
             }
 
@@ -407,12 +415,12 @@ class PaystackService
             // Check if customer has phone number on Paystack
             $hasPhone = $this->checkCustomerPhone($customerCode);
 
-            if (!$hasPhone) {
+            if (! $hasPhone) {
                 Log::warning('Customer missing phone on Paystack, updating...');
                 $phone = $this->formatPhoneNumber($user->phone_number);
                 $updateResult = $this->updateCustomerPhone($customerCode, $phone);
 
-                if (!$updateResult['success']) {
+                if (! $updateResult['success']) {
                     return [
                         'success' => false,
                         'message' => 'Could not update customer phone number on Paystack',
@@ -423,7 +431,7 @@ class PaystackService
                 sleep(1); // Small delay for update to propagate
                 $hasPhone = $this->checkCustomerPhone($customerCode);
 
-                if (!$hasPhone) {
+                if (! $hasPhone) {
                     return [
                         'success' => false,
                         'message' => 'Phone number update did not persist on Paystack',
@@ -443,10 +451,10 @@ class PaystackService
             Log::info('Paystack createDedicatedAccount - Request payload', $payload);
 
             $response = Http::withHeaders([
-                'Authorization' => 'Bearer ' . $this->secretKey,
+                'Authorization' => 'Bearer '.$this->secretKey,
                 'Accept' => 'application/json',
                 'Content-Type' => 'application/json',
-            ])->withoutVerifying()->post($this->baseUrl . '/dedicated_account', $payload);
+            ])->withoutVerifying()->post($this->baseUrl.'/dedicated_account', $payload);
 
             Log::info('Paystack createDedicatedAccount - Response status', [
                 'status' => $response->status(),
@@ -480,15 +488,17 @@ class PaystackService
                 'details' => $errorData['meta']['nextStep'] ?? null,
             ];
         } catch (Exception $e) {
-            Log::error('Paystack API Error: ' . $e->getMessage(), [
+            Log::error('Paystack API Error: '.$e->getMessage(), [
                 'trace' => $e->getTraceAsString(),
             ]);
+
             return [
                 'success' => false,
                 'message' => 'An error occurred while connecting to the payment gateway',
             ];
         }
     }
+
     /**
      * Check if customer has phone number on Paystack
      */
@@ -496,13 +506,13 @@ class PaystackService
     {
         try {
             $response = Http::withHeaders([
-                'Authorization' => 'Bearer ' . $this->secretKey,
+                'Authorization' => 'Bearer '.$this->secretKey,
                 'Accept' => 'application/json',
-            ])->get($this->baseUrl . '/customer/' . $customerCode);
+            ])->get($this->baseUrl.'/customer/'.$customerCode);
 
             if ($response->successful()) {
                 $customerData = $response->json()['data'] ?? [];
-                $hasPhone = !empty($customerData['phone']);
+                $hasPhone = ! empty($customerData['phone']);
 
                 Log::info('Customer phone check', [
                     'customer_code' => $customerCode,
@@ -515,10 +525,12 @@ class PaystackService
 
             return false;
         } catch (Exception $e) {
-            Log::error('Check customer phone error: ' . $e->getMessage());
+            Log::error('Check customer phone error: '.$e->getMessage());
+
             return false;
         }
     }
+
     /**
      * Update customer phone number
      */
@@ -526,24 +538,27 @@ class PaystackService
     {
         try {
             $response = Http::withHeaders([
-                'Authorization' => 'Bearer ' . $this->secretKey,
+                'Authorization' => 'Bearer '.$this->secretKey,
                 'Accept' => 'application/json',
                 'Content-Type' => 'application/json',
-            ])->put($this->baseUrl . '/customer/' . $customerCode, [
+            ])->put($this->baseUrl.'/customer/'.$customerCode, [
                 'phone' => $phone,
             ]);
 
             if ($response->successful()) {
                 Log::info('Customer phone updated successfully');
+
                 return ['success' => true];
             }
 
             Log::error('Failed to update customer phone', [
                 'response' => $response->json(),
             ]);
+
             return ['success' => false];
         } catch (Exception $e) {
-            Log::error('Update customer phone error: ' . $e->getMessage());
+            Log::error('Update customer phone error: '.$e->getMessage());
+
             return ['success' => false];
         }
     }
@@ -555,14 +570,15 @@ class PaystackService
     {
         try {
             $response = Http::withHeaders([
-                'Authorization' => 'Bearer ' . $this->secretKey,
+                'Authorization' => 'Bearer '.$this->secretKey,
                 'Accept' => 'application/json',
                 'Content-Type' => 'application/json',
-            ])->withoutVerifying()->post($this->baseUrl . '/dedicated_account', $originalPayload);
+            ])->withoutVerifying()->post($this->baseUrl.'/dedicated_account', $originalPayload);
 
             if ($response->successful()) {
                 $responseData = $response->json();
                 Log::info('Paystack retryDedicatedAccountCreation - Success');
+
                 return [
                     'success' => true,
                     'data' => $responseData['data'] ?? [],
@@ -579,10 +595,11 @@ class PaystackService
                 'message' => $errorData['message'] ?? 'Failed to create dedicated account after retry',
             ];
         } catch (Exception $e) {
-            Log::error('Retry error: ' . $e->getMessage());
+            Log::error('Retry error: '.$e->getMessage());
+
             return [
                 'success' => false,
-                'message' => 'Retry failed: ' . $e->getMessage(),
+                'message' => 'Retry failed: '.$e->getMessage(),
             ];
         }
     }
@@ -593,6 +610,7 @@ class PaystackService
 
         if (empty($phone)) {
             Log::warning('formatPhoneNumber - Empty phone');
+
             return null;
         }
 
@@ -603,40 +621,45 @@ class PaystackService
 
         if (empty($phone)) {
             Log::warning('formatPhoneNumber - Empty after regex');
+
             return null;
         }
 
         // If phone starts with 0, convert to +234
         if (strlen($phone) === 11 && str_starts_with($phone, '0')) {
-            $formatted = '+234' . substr($phone, 1);
+            $formatted = '+234'.substr($phone, 1);
             Log::info('formatPhoneNumber - Case 1', ['formatted' => $formatted]);
+
             return $formatted;
         }
         // If phone is 10 digits (without leading 0), add +234
         elseif (strlen($phone) === 10) {
-            $formatted = '+234' . $phone;
+            $formatted = '+234'.$phone;
             Log::info('formatPhoneNumber - Case 2', ['formatted' => $formatted]);
+
             return $formatted;
         }
         // If phone already has country code but no +
         elseif (strlen($phone) === 13 && str_starts_with($phone, '234')) {
-            $formatted = '+' . $phone;
+            $formatted = '+'.$phone;
             Log::info('formatPhoneNumber - Case 3', ['formatted' => $formatted]);
+
             return $formatted;
         }
         // If phone already has + and looks valid
         elseif (str_starts_with($phone, '+') && strlen($phone) === 14) {
             Log::info('formatPhoneNumber - Case 4 - Already formatted', ['formatted' => $phone]);
+
             return $phone;
         }
         // Default: try to format as Nigerian number
         else {
             // Check if it starts with 234 and is 13 digits
             if (str_starts_with($phone, '234') && strlen($phone) === 13) {
-                $formatted = '+' . $phone;
+                $formatted = '+'.$phone;
             } else {
                 // Try to add +234 prefix
-                $formatted = '+234' . ltrim($phone, '0');
+                $formatted = '+234'.ltrim($phone, '0');
             }
 
             Log::info('formatPhoneNumber - Case 5 - Default formatting', [
@@ -648,10 +671,10 @@ class PaystackService
             return $formatted;
         }
     }
+
     /**
      * Map Paystack payment status to application status
      */
-
     protected function mapPaymentStatus($paystackStatus)
     {
         switch ($paystackStatus) {
@@ -683,14 +706,16 @@ class PaystackService
                 case 'subscription.create':
                     return $this->processSubscriptionCreate($data);
                 default:
-                    Log::info('Unhandled Paystack Webhook Event: ' . $event, $data);
+                    Log::info('Unhandled Paystack Webhook Event: '.$event, $data);
+
                     return [
                         'success' => true,
-                        'message' => 'Event type not handled: ' . $event,
+                        'message' => 'Event type not handled: '.$event,
                     ];
             }
         } catch (Exception $e) {
-            Log::error('Paystack Webhook Error: ' . $e->getMessage());
+            Log::error('Paystack Webhook Error: '.$e->getMessage());
+
             return [
                 'success' => false,
                 'message' => 'An error occurred while processing webhook',
@@ -739,9 +764,9 @@ class PaystackService
      */
     protected function processWalletFunding($reference, $amount, $data)
     {
-        $lock = \Illuminate\Support\Facades\Cache::lock('paystack_webhook:' . $reference, 30);
+        $lock = \Illuminate\Support\Facades\Cache::lock('paystack_webhook:'.$reference, 30);
 
-        if (!$lock->get()) {
+        if (! $lock->get()) {
             return [
                 'success' => false,
                 'message' => 'Transaction is currently being processed by another worker',
@@ -754,7 +779,7 @@ class PaystackService
                     ->lockForUpdate()
                     ->first();
 
-                if (!$walletFunding) {
+                if (! $walletFunding) {
                     return [
                         'success' => false,
                         'message' => 'Wallet funding record not found',
@@ -790,6 +815,12 @@ class PaystackService
                 if ($transaction) {
                     $transaction->status = 'successful';
                     $transaction->fee = $fee;
+
+                    // Calculate and record system profit (5% of deposit amount)
+                    $profitPercentage = 5.00; // Fixed 5% profit for all wallet deposits
+                    $profitAmount = ($amount * $profitPercentage) / 100;
+
+                    $transaction->profit = $profitAmount;
                     $transaction->save();
                 }
 
@@ -814,10 +845,6 @@ class PaystackService
                     $user->wallet_balance += $remainingAmount;
                     $user->save();
 
-                    // Calculate and record system profit (5% of deposit amount)
-                    $profitPercentage = 5.00; // Fixed 5% profit for all wallet deposits
-                    $profitAmount = ($amount * $profitPercentage) / 100;
-                    
                     // Create system profit record
                     SystemProfit::create([
                         'user_id' => $user->id,
@@ -850,13 +877,14 @@ class PaystackService
                 ];
             });
         } catch (\Exception $e) {
-            Log::error('Paystack processWalletFunding failed: ' . $e->getMessage(), [
+            Log::error('Paystack processWalletFunding failed: '.$e->getMessage(), [
                 'reference' => $reference,
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
+
             return [
                 'success' => false,
-                'message' => 'Internal error: ' . $e->getMessage(),
+                'message' => 'Internal error: '.$e->getMessage(),
             ];
         } finally {
             $lock->release();
@@ -899,9 +927,9 @@ class PaystackService
             ];
         }
 
-        $lock = \Illuminate\Support\Facades\Cache::lock('paystack_virtual_acc:' . $reference, 30);
+        $lock = \Illuminate\Support\Facades\Cache::lock('paystack_virtual_acc:'.$reference, 30);
 
-        if (!$lock->get()) {
+        if (! $lock->get()) {
             return [
                 'success' => false,
                 'message' => 'Transaction is currently being processed',
@@ -912,10 +940,10 @@ class PaystackService
             return \Illuminate\Support\Facades\DB::transaction(function () use ($email, $amount, $reference, $data) {
                 $user = User::where('email', $email)->lockForUpdate()->first();
 
-                if (!$user) {
+                if (! $user) {
                     return [
                         'success' => false,
-                        'message' => 'User not found for email: ' . $email,
+                        'message' => 'User not found for email: '.$email,
                     ];
                 }
 
@@ -984,9 +1012,10 @@ class PaystackService
                         'type' => 'wallet_funding',
                         'amount' => $amount,
                         'fee' => $totalCharges,
+                        'profit' => $systemProfitAmount,
                         'status' => 'successful',
                         'recipient' => $user->email,
-                        'description' => 'Dedicated Virtual Account Funding of ₦' . number_format($amount, 2),
+                        'description' => 'Dedicated Virtual Account Funding of ₦'.number_format($amount, 2),
                         'meta_data' => [
                             'payment_method' => 'paystack_virtual_account',
                             'channel' => 'dedicated_nuban',
@@ -1013,7 +1042,7 @@ class PaystackService
                     $notificationService->sendSystemNotification(
                         $user,
                         'Debt Automatically Settled',
-                        "₦" . number_format($settledAmount, 2) . " has been deducted from your virtual account funding to settle your outstanding debt.",
+                        '₦'.number_format($settledAmount, 2).' has been deducted from your virtual account funding to settle your outstanding debt.',
                         'info'
                     );
                 }
@@ -1032,7 +1061,7 @@ class PaystackService
                     'profit_percentage' => $systemProfitPercentage + ($excessCharge / $amount * 100),
                     'profit_amount' => $systemProfitAmount,
                     'status' => 'recorded',
-                    'description' => "System profit from Paystack dedicated virtual account deposit of ₦{$amount} (0.5% base + ₦" . number_format($excessCharge, 2) . " excess)",
+                    'description' => "System profit from Paystack dedicated virtual account deposit of ₦{$amount} (0.5% base + ₦".number_format($excessCharge, 2).' excess)',
                     'meta_data' => [
                         'payment_reference' => $reference,
                         'payment_method' => 'paystack',
@@ -1059,10 +1088,11 @@ class PaystackService
                 ];
             });
         } catch (\Exception $e) {
-            Log::error('Paystack processDedicatedAccountTransaction failed: ' . $e->getMessage());
+            Log::error('Paystack processDedicatedAccountTransaction failed: '.$e->getMessage());
+
             return [
                 'success' => false,
-                'message' => 'Internal error: ' . $e->getMessage(),
+                'message' => 'Internal error: '.$e->getMessage(),
             ];
         } finally {
             $lock->release();
@@ -1095,6 +1125,7 @@ class PaystackService
     public function validateWebhookSignature($payload, $signature)
     {
         $computedSignature = hash_hmac('sha512', $payload, $this->secretKey);
+
         return hash_equals($computedSignature, $signature);
     }
 
@@ -1105,9 +1136,9 @@ class PaystackService
     {
         try {
             $response = Http::withHeaders([
-                'Authorization' => 'Bearer ' . $this->secretKey,
+                'Authorization' => 'Bearer '.$this->secretKey,
                 'Accept' => 'application/json',
-            ])->get($this->baseUrl . '/bank');
+            ])->get($this->baseUrl.'/bank');
 
             if ($response->successful()) {
                 return [
@@ -1121,7 +1152,8 @@ class PaystackService
                 'message' => 'Failed to fetch banks',
             ];
         } catch (Exception $e) {
-            Log::error('Paystack Error: ' . $e->getMessage());
+            Log::error('Paystack Error: '.$e->getMessage());
+
             return [
                 'success' => false,
                 'message' => 'An error occurred',
@@ -1136,9 +1168,9 @@ class PaystackService
     {
         try {
             $response = Http::withHeaders([
-                'Authorization' => 'Bearer ' . $this->secretKey,
+                'Authorization' => 'Bearer '.$this->secretKey,
                 'Accept' => 'application/json',
-            ])->post($this->baseUrl . '/transferrecipient', [
+            ])->post($this->baseUrl.'/transferrecipient', [
                 'type' => 'nuban',
                 'name' => $name,
                 'account_number' => $accountNumber,
@@ -1158,7 +1190,8 @@ class PaystackService
                 'message' => 'Failed to create transfer recipient',
             ];
         } catch (Exception $e) {
-            Log::error('Paystack Error: ' . $e->getMessage());
+            Log::error('Paystack Error: '.$e->getMessage());
+
             return [
                 'success' => false,
                 'message' => 'An error occurred',
@@ -1173,14 +1206,14 @@ class PaystackService
     {
         try {
             $response = Http::withHeaders([
-                'Authorization' => 'Bearer ' . $this->secretKey,
+                'Authorization' => 'Bearer '.$this->secretKey,
                 'Accept' => 'application/json',
-            ])->post($this->baseUrl . '/transfer', [
+            ])->post($this->baseUrl.'/transfer', [
                 'source' => 'balance',
                 'reason' => $reason,
                 'amount' => $amount * 100,
                 'recipient' => $recipientCode,
-                'reference' => 'TRF_' . time() . '_' . uniqid(),
+                'reference' => 'TRF_'.time().'_'.uniqid(),
             ]);
 
             if ($response->successful()) {
@@ -1195,7 +1228,8 @@ class PaystackService
                 'message' => 'Failed to initiate transfer',
             ];
         } catch (Exception $e) {
-            Log::error('Paystack Error: ' . $e->getMessage());
+            Log::error('Paystack Error: '.$e->getMessage());
+
             return [
                 'success' => false,
                 'message' => 'An error occurred',

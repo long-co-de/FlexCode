@@ -246,6 +246,21 @@ export default function UsersIndex({ auth, users, roles, filter }) {
                                         </div>
                                     </div>
 
+                                    <div className="grid grid-cols-2 gap-3 mb-3 pt-3 border-t border-gray-100 dark:-border-gray-700">
+                                        <div>
+                                            <div className="text-xs text-gray-500 dark:-text-gray-400">Referred By</div>
+                                            <div className="text-sm text-gray-900 dark:-text-gray-100">
+                                                {user.referrer ? user.referrer.name : 'None'}
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <div className="text-xs text-gray-500 dark:-text-gray-400">Total Referrals</div>
+                                            <div className="text-sm text-gray-900 dark:-text-gray-100">
+                                                {user.referrals_count || 0}
+                                            </div>
+                                        </div>
+                                    </div>
+
                                     <div className="flex space-x-2 pt-3 border-t border-gray-200 dark:-border-gray-700">
                                         <Link
                                             href={route('admin.users.show', user.id)}
@@ -313,6 +328,9 @@ export default function UsersIndex({ auth, users, roles, filter }) {
                                             Balance
                                         </th>
                                         <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:-text-gray-400 uppercase tracking-wider">
+                                            Referral
+                                        </th>
+                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:-text-gray-400 uppercase tracking-wider">
                                             Status
                                         </th>
                                         <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:-text-gray-400 uppercase tracking-wider">
@@ -353,6 +371,14 @@ export default function UsersIndex({ auth, users, roles, filter }) {
                                                 <td className="px-6 py-4">
                                                     <div className="text-sm font-medium text-gray-900 dark:-text-gray-100">
                                                         ₦{user.wallet_balance}
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-4 text-sm">
+                                                    <div className="text-gray-900 dark:-text-gray-100">
+                                                        <span className="font-bold">By:</span> {user.referrer ? user.referrer.name : 'None'}
+                                                    </div>
+                                                    <div className="text-xs text-gray-500 dark:-text-gray-400">
+                                                        <span className="font-bold">Referred:</span> {user.referrals_count || 0}
                                                     </div>
                                                 </td>
                                                 <td className="px-6 py-4">

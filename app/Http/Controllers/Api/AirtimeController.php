@@ -10,9 +10,12 @@ use App\Services\DatavendroService;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use App\Traits\ProProfitCalculator;
 
 class AirtimeController extends AtomicController
 {
+    use ProProfitCalculator;
+
     protected $datavendroService;
 
     public function __construct(DatavendroService $datavendroService)
@@ -120,6 +123,13 @@ class AirtimeController extends AtomicController
                     $transaction->status = 'successful';
                     $transaction->save();
                     
+                    // Calculate and record system profit
+                    $profit = $this->calculateProfitMargin($request->amount, 'airtime');
+                    $transaction->profit = $profit;
+                    $transaction->save();
+                    
+                    $this->recordSystemProfit($transaction, $profit, 'airtime');
+                    
                     return [
                         'success' => true,
                         'message' => 'Airtime purchase successful!',
@@ -145,5 +155,10 @@ class AirtimeController extends AtomicController
                 'message' => $e->getMessage(),
             ], 400);
         }
+    protected function calculateProfitMargin($amount, $type = 'airtime')
+    {
+        return $this->isProUser()
+            ? $this->getProProfitMargin($amount, 'airtime')
+            : parent::calculateProfitMargin($amount, 'airtime');
     }
 }

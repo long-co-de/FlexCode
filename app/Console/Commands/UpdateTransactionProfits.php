@@ -65,6 +65,28 @@ class UpdateTransactionProfits extends Command
             if ($profit > 0) {
                 $transaction->profit = $profit;
                 $transaction->save();
+
+                // Also populate system_profits table for historical data
+                \App\Models\SystemProfit::updateOrCreate(
+                    ['transaction_id' => $transaction->id],
+                    [
+                        'user_id' => $transaction->user_id,
+                        'profit_source' => $transaction->type === 'borrowing_repayment' ? 'borrowing_interest' : $transaction->type,
+                        'amount' => $transaction->amount,
+                        'profit_percentage' => $transaction->type === 'borrowing_repayment' 
+                            ? (isset($borrowing) && $borrowing->amount > 0 ? ($profit / $borrowing->amount) * 100 : 0)
+                            : ($settings[$transaction->type] ?? 0),
+                        'profit_amount' => $profit,
+                        'status' => 'recorded',
+                        'description' => "Historical profit record for {$transaction->type} transaction: {$transaction->reference}",
+                        'meta_data' => [
+                            'reference' => $transaction->reference,
+                            'is_historical' => true,
+                            'updated_at' => now(),
+                        ],
+                        'created_at' => $transaction->created_at,
+                    ]
+                );
             }
 
             $bar->advance();

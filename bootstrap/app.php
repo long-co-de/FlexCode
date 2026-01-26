@@ -25,6 +25,11 @@ return Application::configure(basePath: dirname(__DIR__))
             'verified' => \App\Http\Middleware\EnsureEmailIsVerified::class,
             'admin'=>\App\Http\Middleware\IsAdmin::class,
             'agent'=>\App\Http\Middleware\IsAgent::class,
+            'auth.api_key' => \App\Http\Middleware\ApiKeyAuth::class,
+            'pin.verify' => \App\Http\Middleware\VerifyPin::class,
+            'pin.api_verify' => \App\Http\Middleware\VerifyApiPin::class,
+            'active' => \App\Http\Middleware\CheckActive::class,
+            'rapid.transactions' => \App\Http\Middleware\PreventRapidTransactions::class,
         ]);
 
         //

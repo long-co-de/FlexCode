@@ -35,8 +35,9 @@ class PurchaseConfirmation extends Notification implements ShouldQueue
     public function toMail(object $notifiable): MailMessage
     {
         $serviceName = $this->getServiceName($this->serviceType);
+        $meta = $this->transaction->meta_data;
         
-        return (new MailMessage)
+        $message = (new MailMessage)
             ->subject("Your {$serviceName} Purchase Confirmation")
             ->greeting('Hello ' . $notifiable->name . '!')
             ->line("Your {$serviceName} purchase has been confirmed.")
@@ -45,14 +46,41 @@ class PurchaseConfirmation extends Notification implements ShouldQueue
             ->line('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
             ->line('Transaction ID: ' . $this->transaction->reference)
             ->line('Service: ' . $serviceName)
-            ->line('Amount: ₦' . number_format($this->transaction->amount, 2))
+            ->line('Amount: ₦' . number_format($this->transaction->amount, 2));
+
+        if ($this->serviceType === 'airtime' || $this->serviceType === 'data') {
+            $message->line('Recipient: ' . $this->transaction->recipient);
+        }
+
+        if ($this->serviceType === 'electricity') {
+            $message->line('Meter Number: ' . ($meta['meter_number'] ?? $this->transaction->recipient))
+                   ->line('Meter Type: ' . ucfirst($meta['meter_type'] ?? ''))
+                   ->line('Customer Name: ' . ($meta['customer_name'] ?? ''));
+            
+            if (isset($meta['token']) && $meta['token']) {
+                $message->line('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+                       ->line('TOKEN: ' . $meta['token'])
+                       ->line('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+            }
+            
+            if (isset($meta['units']) && $meta['units']) {
+                $message->line('Units: ' . $meta['units']);
+            }
+        }
+
+        if ($this->serviceType === 'cable') {
+            $message->line('Smart Card: ' . $this->transaction->recipient)
+                   ->line('Provider: ' . ($meta['provider'] ?? ''));
+        }
+
+        return $message
             ->line('Status: ' . ucfirst($this->transaction->status))
             ->line('Date: ' . $this->transaction->created_at->format('M d, Y h:i A'))
             ->line('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
             ->line('')
             ->action('View Details', url('/transactions/' . $this->transaction->id))
             ->line('If you have any questions, please contact our support team.')
-            ->line('Thank you for using BorrowLite !');
+            ->line('Thank you for using BorrowLite!');
     }
 
     public function toArray(object $notifiable): array

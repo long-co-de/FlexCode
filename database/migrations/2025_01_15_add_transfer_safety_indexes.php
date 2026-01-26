@@ -24,9 +24,9 @@ return new class extends Migration
                 $table->index(['user_id', 'created_at'], 'wallet_transfer_index');
             }
 
-            // Add index for transaction type queries (use column prefix for VARCHAR)
+            // Add index for transaction type queries
             if (!Schema::hasIndex('transactions', 'transaction_type_index')) {
-                DB::statement('ALTER TABLE transactions ADD INDEX transaction_type_index (type(50), status(50), created_at)');
+                $table->index(['type', 'status', 'created_at'], 'transaction_type_index');
             }
         });
 

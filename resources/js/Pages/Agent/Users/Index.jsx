@@ -109,6 +109,14 @@ export default function UsersIndex({ auth, users, filter }) {
                                                 <p className="text-[10px] text-gray-400 font-black uppercase tracking-wider mb-1">Phone</p>
                                                 <p className="text-sm font-bold text-gray-900">{user.phone_number || 'N/A'}</p>
                                             </div>
+                                            <div className="mt-2">
+                                                <p className="text-[10px] text-gray-400 font-black uppercase tracking-wider mb-1">Referred By</p>
+                                                <p className="text-xs font-bold text-gray-700">{user.referrer ? user.referrer.name : 'None'}</p>
+                                            </div>
+                                            <div className="text-right mt-2">
+                                                <p className="text-[10px] text-gray-400 font-black uppercase tracking-wider mb-1">Referrals</p>
+                                                <p className="text-xs font-bold text-gray-700">{user.referrals_count || 0}</p>
+                                            </div>
                                         </div>
 
                                         <div className="flex gap-2">
@@ -158,6 +166,7 @@ export default function UsersIndex({ auth, users, filter }) {
                                     <th className="px-8 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-widest">User Profile</th>
                                     <th className="px-8 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-widest">Contact Info</th>
                                     <th className="px-8 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-widest">Wallet Balance</th>
+                                    <th className="px-8 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-widest">Referral Info</th>
                                     <th className="px-8 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-widest">Account Status</th>
                                     <th className="px-8 py-4 text-right text-[10px] font-black text-gray-400 uppercase tracking-widest">Action</th>
                                 </tr>
@@ -185,6 +194,10 @@ export default function UsersIndex({ auth, users, filter }) {
                                                 </td>
                                                 <td className="px-8 py-5 whitespace-nowrap text-sm font-black text-blue-600">
                                                     ₦{parseFloat(user.wallet_balance).toLocaleString()}
+                                                </td>
+                                                <td className="px-8 py-5 whitespace-nowrap">
+                                                    <div className="text-xs font-black text-gray-900">By: {user.referrer ? user.referrer.name : 'None'}</div>
+                                                    <div className="text-[10px] text-gray-400 font-medium">Referred: {user.referrals_count || 0}</div>
                                                 </td>
                                                 <td className="px-8 py-5 whitespace-nowrap">
                                                     <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${status.bg} ${status.text} ${status.border}`}>

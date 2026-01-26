@@ -109,19 +109,36 @@ export default function ReferralIndex({ referralStats, referredUsers, referralEa
                         </h3>
 
                         <div className="space-y-4 mb-6">
+                            {/* Referral Link */}
+                            <div>
+                                <label className="block text-sm font-bold text-base-content mb-2">Your Referral Link</label>
+                                <div className="flex flex-col sm:flex-row gap-2">
+                                    <div className="flex-1 bg-base-100 px-4 py-3 rounded-xl border border-base-300 flex items-center min-w-0 overflow-hidden">
+                                        <span className="text-sm text-base-content/70 truncate flex-1">{referralUrl}</span>
+                                    </div>
+                                    <button
+                                        onClick={() => copyToClipboard(referralUrl, 'url')}
+                                        className={`px-4 py-3 rounded-xl font-bold text-sm transition-all whitespace-nowrap ${
+                                            copiedUrl
+                                                ? 'bg-success text-success-content'
+                                                : 'bg-primary text-primary-content hover:bg-primary-focus'
+                                        }`}
+                                    >
+                                        {copiedUrl ? 'Copied!' : 'Copy Link'}
+                                    </button>
+                                </div>
+                            </div>
+
                             {/* Code Input */}
                             <div>
                                 <label className="block text-sm font-bold text-base-content mb-2">Your Referral Code</label>
-                                <div className="flex gap-2">
-                                    <input
-                                        type="text"
-                                        value={referralStats.referral_code}
-                                        readOnly
-                                        className="flex-1 px-4 py-3 rounded-xl border border-base-300 bg-base-100 text-sm font-mono"
-                                    />
+                                <div className="flex flex-col sm:flex-row gap-2">
+                                    <div className="flex-1 bg-base-100 px-4 py-3 rounded-xl border border-base-300 flex items-center min-w-0">
+                                        <span className="text-sm font-mono font-bold text-primary">{referralStats.referral_code}</span>
+                                    </div>
                                     <button
                                         onClick={() => copyToClipboard(referralStats.referral_code, 'code')}
-                                        className={`px-4 py-3 rounded-xl font-bold text-sm transition-all ${
+                                        className={`px-4 py-3 rounded-xl font-bold text-sm transition-all whitespace-nowrap ${
                                             copiedCode
                                                 ? 'bg-success text-success-content'
                                                 : 'bg-primary text-primary-content hover:bg-primary-focus'

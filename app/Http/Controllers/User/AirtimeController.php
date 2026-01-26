@@ -181,6 +181,9 @@ class AirtimeController extends AtomicController
                 ]);
                 $transaction->save();
 
+                // Record system profit
+                $this->recordSystemProfit($transaction, $transaction->profit, 'airtime');
+
                 $user->notify(new PurchaseConfirmation($transaction, 'airtime'));
 
                 if ($request->save_as_beneficiary && !$request->beneficiary_id) {

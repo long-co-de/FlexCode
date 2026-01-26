@@ -146,6 +146,53 @@ export default function ShowUser({ auth, user, transactions }) {
                                         <p className="text-sm font-bold text-gray-900">{new Date(user.created_at).toLocaleDateString(undefined, { dateStyle: 'long' })}</p>
                                     </div>
                                 </div>
+                                <div className="flex items-center space-x-4">
+                                    <div className="h-10 w-10 rounded-2xl bg-gray-50 flex items-center justify-center shrink-0">
+                                        <UserIcon className="h-5 w-5 text-gray-400" />
+                                    </div>
+                                    <div>
+                                        <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Referred By</p>
+                                        <p className="text-sm font-bold text-gray-900">
+                                            {user.referrer ? user.referrer.name : 'None'}
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Referrals Card */}
+                        <div className="bg-white rounded-3xl border border-gray-200 shadow-sm overflow-hidden">
+                            <div className="px-6 py-4 border-b border-gray-50 bg-gray-50/30">
+                                <h4 className="text-[10px] text-gray-400 font-black uppercase tracking-widest">
+                                    Referred Users ({user.referrals?.length || 0})
+                                </h4>
+                            </div>
+                            <div className="p-4 max-h-[300px] overflow-y-auto">
+                                {user.referrals && user.referrals.length > 0 ? (
+                                    <div className="space-y-3">
+                                        {user.referrals.map((referred) => (
+                                            <div key={referred.id} className="flex items-center justify-between p-3 rounded-2xl bg-gray-50/50 hover:bg-gray-50 transition-all border border-transparent hover:border-gray-100 group">
+                                                <div className="flex items-center space-x-3">
+                                                    <div className="h-8 w-8 rounded-xl bg-white flex items-center justify-center border border-gray-100">
+                                                        <UserIcon className="h-4 w-4 text-gray-400" />
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-xs font-black text-gray-900 leading-tight">{referred.name}</p>
+                                                        <p className="text-[10px] text-gray-400 font-medium">Joined {new Date(referred.created_at).toLocaleDateString()}</p>
+                                                    </div>
+                                                </div>
+                                                <Link 
+                                                    href={route('agent.users.show', referred.id)}
+                                                    className="p-2 text-gray-400 hover:text-blue-600 transition-colors"
+                                                >
+                                                    <ChevronRightIcon className="h-4 w-4" />
+                                                </Link>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <p className="text-center text-xs text-gray-400 font-bold py-4">No referrals found</p>
+                                )}
                             </div>
                         </div>
                     </div>

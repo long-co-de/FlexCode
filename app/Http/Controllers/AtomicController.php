@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
 use App\Models\User;
+use App\Models\SystemProfit;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
@@ -347,5 +348,44 @@ abstract class AtomicController extends Controller
         $percentage = \App\Models\Setting::where('key', $settingKey)->value('value') ?? 5;
         
         return ($amount * $percentage) / 100;
+    }
+
+    /**
+     * Record system profit to the system_profits table.
+     * 
+     * @param \App\Models\Transaction $transaction
+     * @param float $profitAmount
+     * @param string $source
+     * @param float|null $percentage
+     * @param string|null $description
+     * @return \App\Models\SystemProfit|null
+     */
+    protected function recordSystemProfit($transaction, $profitAmount, $source, $percentage = null, $description = null)
+    {
+        try {
+            if ($profitAmount <= 0) return null;
+
+            return SystemProfit::create([
+                'user_id' => $transaction->user_id,
+                'transaction_id' => $transaction->id,
+                'profit_source' => $source,
+                'amount' => $transaction->amount,
+                'profit_percentage' => $percentage ?? ($transaction->amount > 0 ? ($profitAmount / $transaction->amount) * 100 : 0),
+                'profit_amount' => $profitAmount,
+                'status' => 'recorded',
+                'description' => $description ?? "Profit from {$source} transaction: {$transaction->reference}",
+                'meta_data' => [
+                    'reference' => $transaction->reference,
+                    'type' => $transaction->type,
+                    'recipient' => $transaction->recipient,
+                ],
+            ]);
+        } catch (\Exception $e) {
+            Log::error("Failed to record system profit", [
+                'transaction_id' => $transaction->id,
+                'error' => $e->getMessage()
+            ]);
+            return null;
+        }
     }
 }

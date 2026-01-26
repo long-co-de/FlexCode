@@ -249,6 +249,31 @@ class XixatPayService
                     ],
                 ]);
 
+                // Calculate and record system profit (5% of deposit amount for consistency)
+                $profitPercentage = 5.00;
+                $profitAmount = ($amount * $profitPercentage) / 100;
+                
+                $transaction->profit = $profitAmount;
+                $transaction->save();
+
+                // Create system profit record
+                \App\Models\SystemProfit::create([
+                    'user_id' => $user->id,
+                    'transaction_id' => $transaction->id,
+                    'wallet_funding_id' => $walletFunding->id,
+                    'profit_source' => 'xixatpay_wallet_deposit',
+                    'amount' => $amount,
+                    'profit_percentage' => $profitPercentage,
+                    'profit_amount' => $profitAmount,
+                    'status' => 'recorded',
+                    'description' => "5% profit from Xixat Pay wallet deposit of ₦{$amount}",
+                    'meta_data' => [
+                        'payment_reference' => $transactionId,
+                        'settlement_fee' => $settlementFee,
+                        'settlement_amount' => $settlementAmount,
+                    ],
+                ]);
+
                 // Update user's wallet balance
                 $netAmount = $settlementAmount;
                 

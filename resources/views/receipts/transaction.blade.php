@@ -235,6 +235,51 @@ use App\Models\Setting;
                 <span class="value">{{ $transaction->recipient }}</span>
             </div>
             @endif
+
+            @if($transaction->type === 'electricity' && isset($transaction->meta_data))
+                @if(isset($transaction->meta_data['customer_name']))
+                <div class="row">
+                    <span class="label">Customer</span>
+                    <span class="value">{{ $transaction->meta_data['customer_name'] }}</span>
+                </div>
+                @endif
+                @if(isset($transaction->meta_data['meter_type']))
+                <div class="row">
+                    <span class="label">Meter Type</span>
+                    <span class="value">{{ ucfirst($transaction->meta_data['meter_type']) }}</span>
+                </div>
+                @endif
+                @if(isset($transaction->meta_data['token']) && $transaction->meta_data['token'])
+                <div class="row" style="background: #f0fdf4; border-radius: 4px; margin-top: 5px;">
+                    <span class="label" style="color: #15803d; font-weight: bold;">TOKEN</span>
+                    <span class="value" style="color: #15803d; font-weight: bold; font-size: 14px;">{{ $transaction->meta_data['token'] }}</span>
+                </div>
+                @endif
+                @if(isset($transaction->meta_data['units']))
+                <div class="row">
+                    <span class="label">Units</span>
+                    <span class="value">{{ $transaction->meta_data['units'] }}</span>
+                </div>
+                @endif
+            @endif
+
+            @if($transaction->type === 'data' && isset($transaction->meta_data))
+                @if(isset($transaction->meta_data['plan_name']))
+                <div class="row">
+                    <span class="label">Plan</span>
+                    <span class="value">{{ $transaction->meta_data['plan_name'] }}</span>
+                </div>
+                @endif
+            @endif
+
+            @if($transaction->type === 'cable' && isset($transaction->meta_data))
+                @if(isset($transaction->meta_data['plan_name']))
+                <div class="row">
+                    <span class="label">Package</span>
+                    <span class="value">{{ $transaction->meta_data['plan_name'] }}</span>
+                </div>
+                @endif
+            @endif
             @if($transaction->fee > 0)
             <div class="row">
                 <span class="label">Fee</span>

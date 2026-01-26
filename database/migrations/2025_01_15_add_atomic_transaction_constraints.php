@@ -53,9 +53,9 @@ return new class extends Migration
                 $table->index(['user_id', 'created_at'], 'rapid_transaction_check');
             }
 
-            // Add index for status lookups (use column prefix for VARCHAR columns)
+            // Add index for status lookups
             if (!Schema::hasIndex('transactions', 'status_type_index')) {
-                DB::statement('ALTER TABLE transactions ADD INDEX status_type_index (type(50), status(50), created_at)');
+                $table->index(['type', 'status', 'created_at'], 'status_type_index');
             }
 
             // Add index for wallet funding queries

@@ -217,7 +217,7 @@ class BorrowingService
             // Create transaction record for the repayment
             $interestProfit = $borrowing->total_amount - $borrowing->amount;
 
-            \App\Models\Transaction::create([
+            $transaction = \App\Models\Transaction::create([
                 'user_id' => $user->id,
                 'reference' => $reference,
                 'type' => 'borrowing_repayment',
@@ -233,6 +233,26 @@ class BorrowingService
                     'interest' => $interestProfit,
                 ],
             ]);
+
+            // Record system profit
+            if ($interestProfit > 0) {
+                \App\Models\SystemProfit::create([
+                    'user_id' => $user->id,
+                    'transaction_id' => $transaction->id,
+                    'profit_source' => 'borrowing_interest',
+                    'amount' => $amount,
+                    'profit_percentage' => ($interestProfit / $borrowing->amount) * 100,
+                    'profit_amount' => $interestProfit,
+                    'status' => 'recorded',
+                    'description' => "Interest profit from borrowing repayment: {$borrowing->reference}",
+                    'meta_data' => [
+                        'borrowing_id' => $borrowing->id,
+                        'principal' => $borrowing->amount,
+                        'interest' => $interestProfit,
+                        'repayment_reference' => $reference,
+                    ],
+                ]);
+            }
 
             \Illuminate\Support\Facades\Log::info('Debt settled', [
                 'user_id' => $user->id,
@@ -475,11 +495,13 @@ class BorrowingService
             return;
         }
 
+        $reference = $details['reference'] ?? 'BOR' . Str::random(10);
         $this->datavendroService->payElectricityBill(
             $meter,
             $provider,
             $amount,
-            $meterType
+            $meterType,
+            $reference
         );
     }
     // In PaymentService.php, add this method:

@@ -18,9 +18,12 @@ use App\Notifications\PurchaseConfirmation;
 use App\Models\Setting;
 use Illuminate\Support\Facades\DB;
 use App\Models\User;
+use App\Traits\ProProfitCalculator;
 
 class DataController extends AtomicController
 {
+    use ProProfitCalculator;
+
     protected $eligibilityService;
     protected $husmodataService;
 
@@ -196,6 +199,9 @@ class DataController extends AtomicController
                 $transaction->status = 'successful';
                 $transaction->save();
 
+                // Record system profit
+                $this->recordSystemProfit($transaction, $transaction->profit, 'data');
+
                 $user->notify(new PurchaseConfirmation($transaction, 'data'));
 
                 if ($request->save_as_beneficiary && !$request->beneficiary_id) {
@@ -227,15 +233,10 @@ class DataController extends AtomicController
         }
     }
 
-    protected function calculateProfitMargin($amount,$type = 'data')
+    protected function calculateProfitMargin($amount, $type = 'data')
     {
-        $user = Auth::user();
-        $settings = Setting::first();
-
-        if ($user->is_pro && $user->pro_expires_at > now()) {
-            return $amount * ($settings->pro_data_profit_percentage / 100);
-        }
-
-        return parent::calculateProfitMargin($amount, 'data');
+        return $this->isProUser()
+            ? $this->getProProfitMargin($amount, 'data')
+            : parent::calculateProfitMargin($amount, 'data');
     }
 }

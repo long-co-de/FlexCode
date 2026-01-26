@@ -12,9 +12,12 @@ use Illuminate\Support\Str;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Hash;
+use App\Traits\ProProfitCalculator;
 
 class DataController extends AtomicController
 {
+    use ProProfitCalculator;
+
     protected $husmodataService;
 
     public function __construct(HusmodataService $husmodataService)
@@ -132,6 +135,13 @@ class DataController extends AtomicController
                     $transaction->status = 'successful';
                     $transaction->save();
 
+                    // Calculate and record system profit
+                    $profit = $this->calculateProfitMargin($plan->selling_price, 'data');
+                    $transaction->profit = $profit;
+                    $transaction->save();
+                    
+                    $this->recordSystemProfit($transaction, $profit, 'data');
+
                     return [
                         'success' => true,
                         'message' => 'Data purchase successful!',
@@ -163,5 +173,10 @@ class DataController extends AtomicController
                 'message' => $e->getMessage(),
             ], 400);
         }
+    protected function calculateProfitMargin($amount, $type = 'data')
+    {
+        return $this->isProUser()
+            ? $this->getProProfitMargin($amount, 'data')
+            : parent::calculateProfitMargin($amount, 'data');
     }
 }

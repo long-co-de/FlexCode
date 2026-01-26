@@ -10,9 +10,12 @@ use App\Models\Transaction;
 use App\Services\DatavendroService;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Hash;
+use App\Traits\ProProfitCalculator;
 
 class CableController extends AtomicController
 {
+    use ProProfitCalculator;
+
     protected $datavendroService;
 
     public function __construct(DatavendroService $datavendroService)
@@ -167,6 +170,13 @@ class CableController extends AtomicController
                     $transaction->status = 'successful';
                     $transaction->save();
 
+                    // Calculate and record system profit
+                    $profit = $this->calculateProfitMargin($plan->selling_price, 'cable');
+                    $transaction->profit = $profit;
+                    $transaction->save();
+                    
+                    $this->recordSystemProfit($transaction, $profit, 'cable');
+
                     return [
                         'success' => true,
                         'message' => 'Cable subscription successful!',
@@ -195,5 +205,10 @@ class CableController extends AtomicController
                 'message' => $e->getMessage(),
             ], 400);
         }
+    protected function calculateProfitMargin($amount, $type = 'cable')
+    {
+        return $this->isProUser()
+            ? $this->getProProfitMargin($amount, 'cable')
+            : parent::calculateProfitMargin($amount, 'cable');
     }
 }

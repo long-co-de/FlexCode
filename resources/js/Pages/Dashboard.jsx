@@ -13,11 +13,12 @@ import {
 } from 'react-icons/fa';
 import { GiReceiveMoney, GiPayMoney } from 'react-icons/gi';
 
-export default function Dashboard({ auth, transactionStats, recentTransactions, serviceUsage, eligibility, borrowingSummary, referralStats, has_card }) {
+export default function Dashboard({ auth, transactionStats, recentTransactions, serviceUsage, eligibility, borrowingSummary, referralStats, has_card, referralUrl }) {
     const { flash, errors } = usePage().props;
     const [showPinVerification, setShowPinVerification] = useState(false);
     const [isRepaying, setIsRepaying] = useState(false);
     const [copiedCode, setCopiedCode] = useState(false);
+    const [copiedUrl, setCopiedUrl] = useState(false);
     const [showFeedbackModal, setShowFeedbackModal] = useState(false);
 
     const handleRepayAll = () => {
@@ -39,6 +40,14 @@ export default function Dashboard({ auth, transactionStats, recentTransactions, 
             navigator.clipboard.writeText(referralStats.referral_code);
             setCopiedCode(true);
             setTimeout(() => setCopiedCode(false), 2000);
+        }
+    };
+
+    const copyReferralUrl = () => {
+        if (referralUrl) {
+            navigator.clipboard.writeText(referralUrl);
+            setCopiedUrl(true);
+            setTimeout(() => setCopiedUrl(false), 2000);
         }
     };
 
@@ -184,53 +193,73 @@ export default function Dashboard({ auth, transactionStats, recentTransactions, 
                 </div>
 
                 {/* Referral Card */}
-                <div className="bg-gradient-to-br from-secondary/20 to-secondary/10 rounded-[2.5rem] p-6 border border-secondary/30 shadow-lg">
-                    {/* ... (referral card content remains same) */}
-                    <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-                        <div className="flex items-start gap-5 flex-1">
-                            <div className="w-14 h-14 rounded-2xl bg-secondary/20 flex items-center justify-center flex-shrink-0">
-                                <FaCoins className="text-2xl text-secondary" />
+                <div className="bg-gradient-to-br from-secondary/20 to-secondary/10 rounded-[2rem] sm:rounded-[2.5rem] p-5 sm:p-6 border border-secondary/30 shadow-lg overflow-hidden">
+                    <div className="flex flex-col gap-5 sm:gap-6">
+                        {/* Top: Icon + Text */}
+                        <div className="flex items-center gap-4 sm:gap-5">
+                            <div className="w-10 h-10 sm:w-14 sm:h-14 rounded-2xl bg-secondary/20 flex items-center justify-center flex-shrink-0">
+                                <FaCoins className="text-xl sm:text-2xl text-secondary" />
                             </div>
-                            <div className="flex-1">
-                                <h3 className="text-lg font-bold text-base-content mb-2">Earn with Referrals</h3>
-                                <p className="text-sm text-base-content/70 mb-4">Share your code and earn 4% on every friend's first deposit.</p>
-                                
-                                <div className="flex items-center gap-3 flex-wrap">
-                                    <div className="bg-base-100/60 px-4 py-2 rounded-xl border border-base-300/50 flex items-center gap-2">
-                                        <code className="text-xs font-black text-primary">{referralStats?.referral_code || 'Loading...'}</code>
-                                        <button
-                                            onClick={copyReferralCode}
-                                            className={`ml-2 px-3 py-1 rounded-lg text-[10px] font-bold transition-all ${
-                                                copiedCode 
-                                                    ? 'bg-success/20 text-success' 
-                                                    : 'bg-primary/20 text-primary hover:bg-primary/30'
-                                            }`}
-                                        >
-                                            {copiedCode ? '✓ Copied!' : 'Copy Code'}
-                                        </button>
-                                    </div>
-                                    <Link
-                                        href={route('referral.index')}
-                                        className="px-5 py-2 bg-secondary text-secondary-content rounded-xl text-xs font-bold hover:bg-secondary-focus transition-all"
-                                    >
-                                        Manage Referrals
-                                    </Link>
-                                </div>
+                            <div className="min-w-0">
+                                <h3 className="text-base sm:text-lg font-bold text-base-content leading-tight">Earn with Referrals</h3>
+                                <p className="text-[10px] sm:text-sm text-base-content/70 mt-1 leading-tight">Share your code and earn 4% on every friend's first deposit.</p>
                             </div>
                         </div>
 
-                        <div className="grid grid-cols-3 gap-3 w-full md:w-auto">
-                            <div className="bg-base-100/50 p-4 rounded-xl border border-base-300/30 text-center">
-                                <p className="text-xs text-base-content/60 font-bold mb-1">Referred</p>
-                                <p className="text-2xl font-black text-secondary">{referralStats?.total_referred_users || 0}</p>
+                        {/* Middle: Inputs (Full Width) */}
+                        <div className="flex flex-col gap-2.5 w-full">
+                            <div className="flex flex-wrap xs:flex-nowrap items-center gap-2">
+                                <div className="flex-1 bg-base-100/60 px-3 py-2 rounded-xl border border-base-300/50 flex items-center justify-between gap-2 min-w-0">
+                                    <code className="text-[10px] sm:text-xs font-black text-primary truncate">{referralStats?.referral_code || '...'}</code>
+                                    <button
+                                        onClick={copyReferralCode}
+                                        className={`px-3 py-1 rounded-lg text-[9px] sm:text-[10px] font-bold transition-all flex-shrink-0 ${
+                                            copiedCode 
+                                                ? 'bg-success/20 text-success' 
+                                                : 'bg-primary/20 text-primary hover:bg-primary/30'
+                                        }`}
+                                    >
+                                        {copiedCode ? '✓' : 'Copy'}
+                                    </button>
+                                </div>
+                                <Link
+                                    href={route('referral.index')}
+                                    className="w-full xs:w-auto px-5 py-2 bg-secondary text-secondary-content rounded-xl text-[10px] sm:text-xs font-bold hover:bg-secondary-focus transition-all text-center whitespace-nowrap"
+                                >
+                                    Manage
+                                </Link>
                             </div>
-                            <div className="bg-base-100/50 p-4 rounded-xl border border-base-300/30 text-center">
-                                <p className="text-xs text-base-content/60 font-bold mb-1">Active</p>
-                                <p className="text-2xl font-black text-success">{referralStats?.active_referred_users || 0}</p>
+                            
+                            {referralUrl && (
+                                <div className="bg-base-100/60 px-3 py-2 rounded-xl border border-base-300/50 flex items-center justify-between gap-3 w-full overflow-hidden">
+                                    <span className="text-[9px] sm:text-[10px] font-medium text-base-content/60 truncate flex-1 min-w-0">{referralUrl}</span>
+                                    <button
+                                        onClick={copyReferralUrl}
+                                        className={`px-3 py-1 rounded-lg text-[9px] sm:text-[10px] font-bold transition-all flex-shrink-0 ${
+                                            copiedUrl 
+                                                ? 'bg-success/20 text-success' 
+                                                : 'bg-base-300 text-base-content hover:bg-base-400'
+                                        }`}
+                                    >
+                                        {copiedUrl ? '✓' : 'Link'}
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Bottom: Stats Grid */}
+                        <div className="grid grid-cols-3 gap-2 sm:gap-3 w-full">
+                            <div className="bg-base-100/50 p-2.5 sm:p-4 rounded-xl border border-base-300/30 text-center flex flex-col justify-center min-w-0">
+                                <p className="text-[8px] sm:text-xs text-base-content/60 font-bold mb-1 uppercase tracking-tighter truncate">Referred</p>
+                                <p className="text-base sm:text-2xl font-black text-secondary leading-none">{referralStats?.total_referred_users || 0}</p>
                             </div>
-                            <div className="bg-base-100/50 p-4 rounded-xl border border-base-300/30 text-center">
-                                <p className="text-xs text-base-content/60 font-bold mb-1">Earnings</p>
-                                <p className="text-xl font-black text-primary">₦{Number(referralStats?.total_earnings || 0).toLocaleString()}</p>
+                            <div className="bg-base-100/50 p-2.5 sm:p-4 rounded-xl border border-base-300/30 text-center flex flex-col justify-center min-w-0">
+                                <p className="text-[8px] sm:text-xs text-base-content/60 font-bold mb-1 uppercase tracking-tighter truncate">Active</p>
+                                <p className="text-base sm:text-2xl font-black text-success leading-none">{referralStats?.active_referred_users || 0}</p>
+                            </div>
+                            <div className="bg-base-100/50 p-2.5 sm:p-4 rounded-xl border border-base-300/30 text-center flex flex-col justify-center min-w-0">
+                                <p className="text-[8px] sm:text-xs text-base-content/60 font-bold mb-1 uppercase tracking-tighter truncate">Earnings</p>
+                                <p className="text-sm sm:text-xl font-black text-primary leading-none truncate">₦{Number(referralStats?.total_earnings || 0).toLocaleString()}</p>
                             </div>
                         </div>
                     </div>

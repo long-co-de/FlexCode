@@ -15,9 +15,12 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use App\Models\User;
+use App\Traits\ProProfitCalculator;
 
 class CableController extends AtomicController
 {
+    use ProProfitCalculator;
+
     protected $datavendroService;
 
     public function __construct(DatavendroService $datavendroService)
@@ -199,6 +202,9 @@ class CableController extends AtomicController
                 ]);
                 $transaction->save();
 
+                // Record system profit
+                $this->recordSystemProfit($transaction, $transaction->profit, 'cable');
+
                 if ($request->save_as_beneficiary && !$request->beneficiary_id) {
                     Beneficiary::create([
                         'user_id' => $user->id,
@@ -227,11 +233,10 @@ class CableController extends AtomicController
         }
     }
 
-    protected function calculateProfitMargin($amount, $type = null)
+    protected function calculateProfitMargin($amount, $type = 'cable')
     {
-
-
-        // Otherwise use regular profit margin
-        return parent::calculateProfitMargin($amount, 'cable');
+        return $this->isProUser()
+            ? $this->getProProfitMargin($amount, 'cable')
+            : parent::calculateProfitMargin($amount, 'cable');
     }
 }

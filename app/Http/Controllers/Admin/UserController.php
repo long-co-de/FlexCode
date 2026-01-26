@@ -38,7 +38,10 @@ class UserController extends Controller
             $query->where('role', $role);
         }
 
-        $users = $query->orderBy('created_at', 'desc')->paginate(10);
+        $users = $query->with(['referrer'])
+            ->withCount('referrals')
+            ->orderBy('created_at', 'desc')
+            ->paginate(10);
 
         return Inertia::render('Admin/Users/Index', [
             'users' => $users,
@@ -99,6 +102,8 @@ class UserController extends Controller
      */
     public function show(User $user)
     {
+        $user->load(['referrer', 'referrals']);
+        
         $transactions = Transaction::where('user_id', $user->id)
             ->orderBy('created_at', 'desc')
             ->paginate(10);

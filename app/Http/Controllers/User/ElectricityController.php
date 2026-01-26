@@ -64,7 +64,7 @@ class ElectricityController extends AtomicController
             }
         }
 
-        return back()->with('info', 'this service is temporarily unavailable at the moment. We are working to restore it as soon as possible.');
+        // return back()->with('info', 'this service is temporarily unavailable at the moment. We are working to restore it as soon as possible.');
         return Inertia::render('User/Electricity', [
             'electricityProviders' => $electricityProviders,
             'beneficiaries' => $beneficiaries,
@@ -133,7 +133,7 @@ class ElectricityController extends AtomicController
             'pin' => 'required|string|size:4',
             'request_id' => 'nullable|string',
         ]);
-        return back()->with('info', 'this service is temporarily unavailable at the moment. We are working to restore it as soon as possible.');
+        // return back()->with('info', 'this service is temporarily unavailable at the moment. We are working to restore it as soon as possible.');
 
         $user = $request->user();
 
@@ -201,18 +201,27 @@ class ElectricityController extends AtomicController
                 $request->meter_number,
                 $provider->code,
                 $request->amount,
-                $request->meter_type
+                $request->meter_type,
+                $transaction->reference,
+                $user->phone_number ?? null
             );
 
             if ($vt['success']) {
                 $transaction->status = 'successful';
                 $transaction->meta_data = array_merge($transaction->meta_data ?? [], [
                     'datavendro' => $vt['data'] ?? [],
+                    'token' => $vt['token'] ?? null,
+                    'units' => $vt['units'] ?? null,
                     'completed_at' => now(),
                 ]);
                 $transaction->save();
 
-                $token = $vt['data']['token'] ?? ($vt['data']['Token'] ?? ($vt['data']['POWERTOKEN'] ?? null));
+                // Record system profit
+                $this->recordSystemProfit($transaction, $transaction->profit, 'electricity');
+
+                $user->notify(new \App\Notifications\PurchaseConfirmation($transaction, 'electricity'));
+
+                $token = $vt['token'] ?? null;
                 $successMsg = 'Electricity bill payment successful!' . ($token ? ' Token: ' . $token : '');
                 return redirect()->route('dashboard')->with('success', $successMsg);
             } else {

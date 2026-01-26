@@ -115,7 +115,7 @@ class PaymentService
 
                 // Create transaction record for the repayment (PROFIT TRACKING)
                 $interestProfit = $borrowing->total_amount - $borrowing->amount;
-                \App\Models\Transaction::create([
+                $transaction = \App\Models\Transaction::create([
                     'user_id' => $user->id,
                     'reference' => $reference,
                     'type' => 'borrowing_repayment',
@@ -132,6 +132,27 @@ class PaymentService
                         'paystack_id' => $chargeResponse['data']['id'] ?? null,
                     ],
                 ]);
+
+                // Record system profit
+                if ($interestProfit > 0) {
+                    \App\Models\SystemProfit::create([
+                        'user_id' => $user->id,
+                        'transaction_id' => $transaction->id,
+                        'profit_source' => 'borrowing_interest',
+                        'amount' => $borrowing->total_amount,
+                        'profit_percentage' => ($interestProfit / $borrowing->amount) * 100,
+                        'profit_amount' => $interestProfit,
+                        'status' => 'recorded',
+                        'description' => "Interest profit from borrowing repayment (Card): {$borrowing->reference}",
+                        'meta_data' => [
+                            'borrowing_id' => $borrowing->id,
+                            'principal' => $borrowing->amount,
+                            'interest' => $interestProfit,
+                            'repayment_reference' => $reference,
+                            'payment_gateway' => 'paystack',
+                        ],
+                    ]);
+                }
 
                 Log::info('Borrowing repayment successful with profit tracked', [
                     'borrowing_id' => $borrowing->id,

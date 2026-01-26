@@ -120,6 +120,20 @@ class AirtimeToCashController extends AtomicController
                 $transaction = Transaction::where('reference', $lockedA2C->reference)->lockForUpdate()->first();
                 if ($transaction) {
                     $transaction->status = $newStatus;
+                    
+                    if ($newStatus === 'successful') {
+                        $transaction->profit = $lockedA2C->fee;
+                        
+                        // Record system profit
+                        $this->recordSystemProfit(
+                            $transaction, 
+                            $lockedA2C->fee, 
+                            'airtime_to_cash', 
+                            null, 
+                            "Profit from Airtime to Cash conversion: {$lockedA2C->reference}"
+                        );
+                    }
+                    
                     $transaction->save();
                 }
             });

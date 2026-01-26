@@ -30,7 +30,10 @@ class UserController extends Controller
             });
         }
 
-        $users = $query->orderBy('created_at', 'desc')->paginate(10);
+        $users = $query->with(['referrer'])
+            ->withCount('referrals')
+            ->orderBy('created_at', 'desc')
+            ->paginate(10);
 
         return Inertia::render('Agent/Users/Index', [
             'users' => $users,
@@ -51,6 +54,8 @@ class UserController extends Controller
         if ($user->role !== 'user') {
             abort(403, 'Unauthorized action.');
         }
+
+        $user->load(['referrer', 'referrals']);
 
         $transactions = Transaction::where('user_id', $user->id)
             ->orderBy('created_at', 'desc')

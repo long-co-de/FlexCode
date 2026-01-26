@@ -54,10 +54,16 @@ class DashboardController extends Controller
             ->pluck('count', 'type')
             ->toArray();
 
+        $referralService = app(ReferralService::class);
+        $referralStats = $referralService->getReferralStats($user);
+        $referralUrl = route('register') . '?code=' . $user->referral_code;
+
         return Inertia::render('Dashboard', [
             'recentTransactions' => $recentTransactions,
             'transactionStats' => $transactionStats,
             'serviceUsage' => $serviceUsage,
+            'referralStats' => $referralStats,
+            'referralUrl' => $referralUrl,
         ]);
     }
 

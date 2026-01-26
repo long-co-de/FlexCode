@@ -91,6 +91,10 @@ class DatavendroService
 
     public function getDiscoId($discoName)
     {
+        if (is_numeric($discoName)) {
+            return (int)$discoName;
+        }
+        
         $disco = strtolower($discoName);
         // Mapping disco names to their IDs as per Datavendro API
         $discoMap = [
@@ -314,30 +318,58 @@ class DatavendroService
         }
     }
 
-    public function payElectricityBill($meterNumber, $discoName, $amount, $meterType)
+    public function payElectricityBill($meterNumber, $discoName, $amount, $meterType, $reference = null, $phone = null)
     {
         try {
-            $meterTypeValue = (strtolower($meterType) === 'prepaid') ? '1' : '2';
+            $meterTypeValue = (strtolower($meterType) === 'prepaid') ? "Prepaid" : "Postpaid";
             $discoId = $this->getDiscoId($discoName);
 
             $payload = [
-                'disco_name' => $discoId,
+                'disco_name' => (string)$discoId,
+                'disconame' => (is_string($discoName) && !is_numeric($discoName)) ? $discoName : null,
                 'amount' => $amount,
                 'meter_number' => $meterNumber,
-                'MeterType' => $meterTypeValue
+                'meternumber' => $meterNumber,
+                'MeterType' => $meterTypeValue,
             ];
+            if (!empty($reference)) {
+                $payload['request_id'] = $reference;
+                $payload['reference'] = $reference;
+            }
+            if (!empty($phone)) {
+                $payload['phone'] = $phone;
+                $payload['phone_number'] = $phone;
+            }
+            $payload = array_filter($payload, static function ($value) {
+                return $value !== null && $value !== '';
+            });
             Log::info('Datavendro payElectricityBill Request', $payload);
             $response = $this->request()->post($this->apiUrl . '/billpayment/', $payload);
             Log::info('Datavendro payElectricityBill Response', ['status' => $response->status(), 'data' => $response->json()]);
+            if (!$response->successful()) {
+                Log::warning('Datavendro payElectricityBill Error', [
+                    'status' => $response->status(),
+                    'body' => $response->body(),
+                    'headers' => $response->headers(),
+                    'url' => $this->apiUrl . '/billpayment/',
+                ]);
+            }
 
             if ($response->successful()) {
                 $responseData = $response->json();
                 $isSuccess = isset($responseData['Status']) &&
                     (strtolower($responseData['Status']) === 'success' || strtolower($responseData['Status']) === 'successful');
 
+                // Extract data if it exists in the nested 'data' field
+                $innerData = $responseData['data'] ?? [];
+                $token = $innerData['token'] ?? ($innerData['Token'] ?? ($innerData['POWERTOKEN'] ?? ($innerData['main_token'] ?? null)));
+                $units = $innerData['units'] ?? ($innerData['Units'] ?? ($innerData['quantity'] ?? null));
+
                 return [
                     'success' => $isSuccess,
                     'data' => $responseData,
+                    'token' => $token,
+                    'units' => $units,
                     'message' => $responseData['api_response'] ?? ($isSuccess ? 'Electricity bill payment successful' : 'Electricity bill payment failed'),
                 ];
             }

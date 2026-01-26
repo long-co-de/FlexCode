@@ -188,7 +188,79 @@ export default function ShowUser({ auth, user, transactions }) {
                                                 </div>
                                             </div>
                                         </div>
+
+                                        <div className="flex items-start space-x-4">
+                                            <div className="flex-shrink-0 text-gray-400">
+                                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
+                                                  <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 12c0-1.232-.046-2.453-.138-3.662a4.006 4.006 0 00-3.7-3.7 48.678 48.678 0 00-7.324 0 4.006 4.006 0 00-3.7 3.7c-.017.22-.032.441-.046.662M19.5 12l3-3m-3 3l-3-3m-12 3c0 1.232.046 2.453.138 3.662a4.006 4.006 0 003.7 3.7 48.656 48.656 0 007.324 0 4.006 4.006 0 003.7-3.7c.017-.22.032-.441.046-.662M4.5 12l3 3m-3-3l-3 3" />
+                                                </svg>
+                                            </div>
+                                            <div className="flex-1">
+                                                <p className="text-sm font-medium text-gray-500 dark:-text-gray-400">Referrer</p>
+                                                <div className="mt-1">
+                                                    {user.referrer ? (
+                                                        <Link 
+                                                            href={route('admin.users.show', user.referrer.id)}
+                                                            className="text-blue-600 hover:text-blue-800 dark:-text-blue-400 font-medium"
+                                                        >
+                                                            {user.referrer.name} ({user.referrer.email})
+                                                        </Link>
+                                                    ) : (
+                                                        <span className="text-gray-400 dark:-text-gray-500 italic">None</span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
                                     </div>
+                                </div>
+                            </div>
+
+                            {/* Referrals List */}
+                            <div className="bg-white dark:-bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:-border-gray-700 overflow-hidden mt-6">
+                                <div className="px-6 py-4 border-b border-gray-200 dark:-border-gray-700 flex justify-between items-center">
+                                    <h3 className="text-lg font-semibold text-gray-900 dark:-text-gray-100">
+                                        Referred Users ({user.referrals?.length || 0})
+                                    </h3>
+                                </div>
+                                <div className="overflow-x-auto">
+                                    <table className="min-w-full divide-y divide-gray-200 dark:-divide-gray-700">
+                                        <thead className="bg-gray-50 dark:-bg-gray-900">
+                                            <tr>
+                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:-text-gray-400 uppercase tracking-wider">User</th>
+                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:-text-gray-400 uppercase tracking-wider">Joined</th>
+                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:-text-gray-400 uppercase tracking-wider">Action</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-200 dark:-divide-gray-700">
+                                            {user.referrals && user.referrals.length > 0 ? (
+                                                user.referrals.map((referred) => (
+                                                    <tr key={referred.id} className="hover:bg-gray-50 dark:-hover:bg-gray-900/50">
+                                                        <td className="px-6 py-4">
+                                                            <div className="text-sm font-medium text-gray-900 dark:-text-gray-100">{referred.name}</div>
+                                                            <div className="text-xs text-gray-500 dark:-text-gray-400">{referred.email}</div>
+                                                        </td>
+                                                        <td className="px-6 py-4 text-sm text-gray-500 dark:-text-gray-400">
+                                                            {new Date(referred.created_at).toLocaleDateString()}
+                                                        </td>
+                                                        <td className="px-6 py-4 text-sm">
+                                                            <Link 
+                                                                href={route('admin.users.show', referred.id)}
+                                                                className="text-blue-600 hover:text-blue-900 dark:-text-blue-400"
+                                                            >
+                                                                View
+                                                            </Link>
+                                                        </td>
+                                                    </tr>
+                                                ))
+                                            ) : (
+                                                <tr>
+                                                    <td colSpan="3" className="px-6 py-4 text-center text-sm text-gray-500 dark:-text-gray-400 italic">
+                                                        No referrals found
+                                                    </td>
+                                                </tr>
+                                            )}
+                                        </tbody>
+                                    </table>
                                 </div>
                             </div>
                         </div>

@@ -378,7 +378,32 @@ class MonnifyService
                 $transaction = Transaction::where('reference', $reference)->lockForUpdate()->first();
                 if ($transaction) {
                     $transaction->status = 'successful';
+                    
+                    // Calculate and record system profit (5% of deposit amount for consistency with Paystack)
+                    $profitPercentage = 5.00;
+                    $profitAmount = ($amount * $profitPercentage) / 100;
+                    
+                    $transaction->profit = $profitAmount;
                     $transaction->save();
+                    
+                    // Create system profit record
+                    \App\Models\SystemProfit::create([
+                        'user_id' => $user->id,
+                        'transaction_id' => $transaction->id,
+                        'wallet_funding_id' => $walletFunding->id,
+                        'profit_source' => 'monnify_wallet_deposit',
+                        'amount' => $amount,
+                        'profit_percentage' => $profitPercentage,
+                        'profit_amount' => $profitAmount,
+                        'status' => 'recorded',
+                        'description' => "5% profit from Monnify wallet deposit of ₦{$amount}",
+                        'meta_data' => [
+                            'payment_reference' => $reference,
+                            'payment_method' => $paymentMethod,
+                            'charge_amount' => $chargeAmount,
+                            'final_amount' => $finalAmount,
+                        ],
+                    ]);
                 }
 
                 // Credit user wallet with debt settlement

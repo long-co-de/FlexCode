@@ -9,9 +9,12 @@ use App\Models\Transaction;
 use App\Services\DatavendroService;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Hash;
+use App\Traits\ProProfitCalculator;
 
 class ElectricityController extends AtomicController
 {
+    use ProProfitCalculator;
+
     protected $datavendroService;
 
     public function __construct(DatavendroService $datavendroService)
@@ -148,23 +151,34 @@ class ElectricityController extends AtomicController
                     $request->meter_number,
                     $provider->code,
                     $request->amount,
-                    $request->meter_type
+                    $request->meter_type,
+                    $reference,
+                    $request->phone_number
                 );
 
                 if ($response['success']) {
                     // Update transaction status and token
                     $transaction->status = 'successful';
                     $transaction->meta_data = array_merge($transaction->meta_data, [
-                        'token' => $response['data']['token'] ?? null,
-                        'units' => $response['data']['units'] ?? null,
+                        'token' => $response['token'] ?? null,
+                        'units' => $response['units'] ?? null,
+                        'api_response' => $response['data'] ?? null,
                     ]);
                     $transaction->save();
+
+                    // Calculate and record system profit
+                    $profit = $this->calculateProfitMargin($request->amount, 'electricity');
+                    $transaction->profit = $profit;
+                    $transaction->save();
+                    
+                    $this->recordSystemProfit($transaction, $profit, 'electricity');
 
                     return [
                         'success' => true,
                         'message' => 'Electricity bill payment successful!',
                         'transaction' => $transaction,
-                        'token' => $response['data']['token'] ?? null,
+                        'token' => $response['token'] ?? null,
+                        'units' => $response['units'] ?? null,
                     ];
                 } else {
                     // If failed, refund the user
@@ -189,5 +203,10 @@ class ElectricityController extends AtomicController
                 'message' => $e->getMessage(),
             ], 400);
         }
+    protected function calculateProfitMargin($amount, $type = 'electricity')
+    {
+        return $this->isProUser()
+            ? $this->getProProfitMargin($amount, 'electricity')
+            : parent::calculateProfitMargin($amount, 'electricity');
     }
 }

@@ -7,19 +7,19 @@ import TextInput from '@/Components/TextInput';
 import Button from '@/Components/Button';
 import Modal from '@/Components/Modal';
 import EligibilityAlert from '@/Components/EligibilityAlert';
-import { 
-    FaBolt, FaLightbulb, FaSearch, FaUser, FaHistory, 
-    FaWallet, FaCheckCircle, FaTimes, FaShieldAlt, 
+import {
+    FaBolt, FaLightbulb, FaSearch, FaUser, FaHistory,
+    FaWallet, FaCheckCircle, FaTimes, FaShieldAlt,
     FaInfoCircle, FaCreditCard, FaMapMarkerAlt
 } from 'react-icons/fa';
 import axios from 'axios';
 
-export default function Electricity({ 
-    auth, 
-    electricityProviders, 
-    beneficiaries = [], 
-    eligibility, 
-    hasActiveCard 
+export default function Electricity({
+    auth,
+    electricityProviders,
+    beneficiaries = [],
+    eligibility,
+    hasActiveCard
 }) {
     const [selectedProvider, setSelectedProvider] = useState(null);
     const [verifyingMeter, setVerifyingMeter] = useState(false);
@@ -57,6 +57,11 @@ export default function Electricity({
         const rate = getInterestRate();
         const interest = (parseFloat(amount || 0) * rate) / 100;
         return parseFloat(amount || 0) + interest;
+    };
+
+    const calculateCharge = (amount) => {
+        const amt = parseFloat(amount || 0);
+        return amt <= 1000 ? 1000 : 200;
     };
 
     const handleProviderSelect = (provider) => {
@@ -103,7 +108,7 @@ export default function Electricity({
         const newPin = [...pin];
         newPin[index] = newValue;
         setPin(newPin);
-        
+
         setData('pin', newPin.join(''));
 
         if (newValue && index < 3) {
@@ -195,7 +200,7 @@ export default function Electricity({
             <div className="py-6 sm:py-8">
                 <div className="max-w-5xl mx-auto px-4">
                     <EligibilityAlert eligibility={eligibility} />
-                    
+
                     <div className="grid lg:grid-cols-12 gap-6 sm:gap-8 mt-6">
                         {/* Main Form */}
                         <div className="lg:col-span-8 space-y-6">
@@ -212,8 +217,8 @@ export default function Electricity({
                                         </div>
                                     </div>
                                     <label className="relative inline-flex items-center cursor-pointer ml-auto sm:ml-0">
-                                        <input 
-                                            type="checkbox" 
+                                        <input
+                                            type="checkbox"
                                             className="sr-only peer"
                                             checked={useBNPL}
                                             onChange={(e) => handleBNPLToggle(e.target.checked)}
@@ -241,8 +246,8 @@ export default function Electricity({
                                                 type="button"
                                                 onClick={() => handleProviderSelect(provider)}
                                                 className={`relative group p-4 rounded-2xl sm:rounded-3xl border-2 transition-all text-center flex flex-col items-center justify-center min-h-[120px] sm:min-h-0 ${
-                                                    isActive 
-                                                    ? 'border-sky-500 bg-sky-50 shadow-md shadow-sky-100' 
+                                                    isActive
+                                                    ? 'border-sky-500 bg-sky-50 shadow-md shadow-sky-100'
                                                     : 'border-slate-50 bg-slate-50/50 hover:border-slate-200'
                                                 }`}
                                             >
@@ -274,7 +279,7 @@ export default function Electricity({
                                         </div>
                                         Meter Details
                                     </h4>
-                                    
+
                                     <div className="space-y-6">
                                         <div className="grid grid-cols-2 gap-3 sm:gap-4">
                                             {['prepaid', 'postpaid'].map((type) => (
@@ -283,8 +288,8 @@ export default function Electricity({
                                                     type="button"
                                                     onClick={() => setData('meter_type', type)}
                                                     className={`py-3 rounded-xl sm:rounded-2xl border-2 font-black text-[10px] uppercase tracking-widest transition-all ${
-                                                        data.meter_type === type 
-                                                        ? 'border-sky-500 bg-sky-50 text-sky-700' 
+                                                        data.meter_type === type
+                                                        ? 'border-sky-500 bg-sky-50 text-sky-700'
                                                         : 'border-slate-50 bg-slate-50 text-slate-500'
                                                     }`}
                                                 >
@@ -344,6 +349,7 @@ export default function Electricity({
                                                                 onChange={(e) => setData('amount', e.target.value)}
                                                                 className="w-full pl-12 py-4 rounded-xl sm:rounded-2xl border-slate-100 focus:border-sky-500 focus:ring-sky-200 text-xl font-black"
                                                                 placeholder="0.00"
+                                                                min="2000"
                                                             />
                                                             <div className="absolute left-4 top-1/2 -translate-y-1/2 font-black text-slate-400">₦</div>
                                                         </div>
@@ -358,8 +364,8 @@ export default function Electricity({
                                                                     type="button"
                                                                     onClick={() => setData('duration', 3)}
                                                                     className={`p-4 rounded-xl sm:rounded-2xl border-2 transition-all flex flex-col items-center gap-1 ${
-                                                                        data.duration === 3 
-                                                                        ? 'border-sky-500 bg-sky-50 shadow-md shadow-sky-100' 
+                                                                        data.duration === 3
+                                                                        ? 'border-sky-500 bg-sky-50 shadow-md shadow-sky-100'
                                                                         : 'border-slate-50 bg-slate-50/50 hover:border-slate-200'
                                                                     }`}
                                                                 >
@@ -370,8 +376,8 @@ export default function Electricity({
                                                                     type="button"
                                                                     onClick={() => setData('duration', 7)}
                                                                     className={`p-4 rounded-xl sm:rounded-2xl border-2 transition-all flex flex-col items-center gap-1 ${
-                                                                        data.duration === 7 
-                                                                        ? 'border-sky-500 bg-sky-50 shadow-md shadow-sky-100' 
+                                                                        data.duration === 7
+                                                                        ? 'border-sky-500 bg-sky-50 shadow-md shadow-sky-100'
                                                                         : 'border-slate-50 bg-slate-50/50 hover:border-slate-200'
                                                                     }`}
                                                                 >
@@ -388,19 +394,19 @@ export default function Electricity({
                                                                     </div>
                                                                     <div className="flex justify-between text-xs sm:text-sm">
                                                                         <span className="text-slate-400 font-medium">Service Fee & VAT</span>
-                                                                        <span className="font-bold text-sky-400">+₦200.00</span>
+                                                                        <span className="font-bold text-sky-400">+₦{calculateCharge(data.amount).toLocaleString()}.00</span>
                                                                     </div>
                                                                     <div className="flex justify-between text-xs sm:text-sm border-t border-white/5 pt-2">
                                                                         <span className="text-slate-400 font-medium">Total Borrowed</span>
-                                                                        <span className="font-bold">₦{(parseFloat(data.amount) + 200).toLocaleString()}</span>
+                                                                        <span className="font-bold">₦{(parseFloat(data.amount) + calculateCharge(data.amount)).toLocaleString()}</span>
                                                                     </div>
                                                                     <div className="flex justify-between text-xs sm:text-sm">
                                                                         <span className="text-slate-400 font-medium">Interest ({getInterestRate()}%)</span>
-                                                                        <span className="font-bold text-sky-400">+₦{(((parseFloat(data.amount) + 200) * getInterestRate()) / 100).toLocaleString()}</span>
+                                                                        <span className="font-bold text-sky-400">+₦{(((parseFloat(data.amount) + calculateCharge(data.amount)) * getInterestRate()) / 100).toLocaleString()}</span>
                                                                     </div>
                                                                     <div className="pt-3 border-t border-white/10 flex justify-between items-center">
                                                                         <span className="text-sm font-bold">Total Repayment</span>
-                                                                        <span className="text-xl sm:text-2xl font-black text-sky-400">₦{calculateTotalRepayment(parseFloat(data.amount) + 200).toLocaleString()}</span>
+                                                                        <span className="text-xl sm:text-2xl font-black text-sky-400">₦{calculateTotalRepayment(parseFloat(data.amount) + calculateCharge(data.amount)).toLocaleString()}</span>
                                                                     </div>
                                                                 </div>
                                                             )}
@@ -415,7 +421,7 @@ export default function Electricity({
                                                             </div>
                                                             <div className="flex justify-between text-xs sm:text-sm">
                                                                 <span className="text-slate-500 font-medium">Service Fee</span>
-                                                                <span className="font-black text-slate-700">₦100.00</span>
+                                                                <span className="font-black text-slate-700">₦{(calculateCharge(data.amount) - 100).toLocaleString()}.00</span>
                                                             </div>
                                                             <div className="flex justify-between text-xs sm:text-sm">
                                                                 <span className="text-slate-500 font-medium">VAT</span>
@@ -423,7 +429,7 @@ export default function Electricity({
                                                             </div>
                                                             <div className="pt-3 border-t border-slate-200 flex justify-between items-center">
                                                                 <span className="text-sm font-black text-slate-800">Total Payable</span>
-                                                                <span className="text-xl sm:text-2xl font-black text-sky-600">₦{(parseFloat(data.amount) + 200).toLocaleString()}</span>
+                                                                <span className="text-xl sm:text-2xl font-black text-sky-600">₦{(parseFloat(data.amount) + calculateCharge(data.amount)).toLocaleString()}</span>
                                                             </div>
                                                         </div>
                                                     )}
@@ -463,8 +469,9 @@ export default function Electricity({
                                 <ul className="space-y-4">
                                     {[
                                         { title: 'Check Meter Type', desc: 'Ensure you select the correct meter type (Prepaid/Postpaid).' },
-                                        { title: 'Minimum Amount', desc: 'Minimum recharge for most providers is ₦1,000.' },
-                                        { title: 'Service Charge', desc: 'A small convenience fee may apply to this transaction.' },
+                                        { title: 'Minimum Amount', desc: 'Minimum recharge amount is ₦1,000 for all providers.' },
+                                        { title: 'Service Charges', desc: 'Charges: ₦1,000 for amounts ≤ ₦1,000, ₦200 for amounts > ₦1,000.' },
+                                        { title: 'Disco Collection Warning', desc: 'High chances of disco collecting loans for some meters. Purchase at your own risk.' },
                                         { title: 'Instant Delivery', desc: 'Your token will be delivered instantly via SMS and App.' }
                                     ].map((tip, i) => (
                                         <li key={i} className="flex gap-3">
@@ -501,7 +508,7 @@ export default function Electricity({
                     <div className="w-16 h-16 sm:w-20 sm:h-20 bg-sky-50 rounded-2xl sm:rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-inner">
                         <FaShieldAlt className="text-2xl sm:text-3xl text-sky-600" />
                     </div>
-                    
+
                     <h3 className="text-xl sm:text-2xl font-black text-slate-900 mb-2">Authorize Payment</h3>
                     <p className="text-sm font-medium text-slate-500 mb-8">Enter your 4-digit transaction PIN</p>
 
@@ -540,7 +547,7 @@ export default function Electricity({
                                 </>
                             )}
                         </button>
-                        <button 
+                        <button
                             onClick={() => setShowPinModal(false)}
                             className="text-sm font-bold text-slate-400 hover:text-slate-600 transition-colors"
                         >

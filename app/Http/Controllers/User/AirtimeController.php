@@ -175,8 +175,11 @@ class AirtimeController extends AtomicController
                 $transaction->status = 'successful';
                 $transaction->meta_data = array_merge($transaction->meta_data ?? [], [
                     'response' => $response,
-                    'ident'=> $response['data']['ident'] ?? null,
-                    'id'=> $response['data']['id'] ?? null,
+                    'api_transaction_id' => $response['api_transaction_id']
+                        ?? ($response['data']['id'] ?? ($response['data']['ident'] ?? null)),
+                    'api_status' => $response['api_status'] ?? null,
+                    'ident' => $response['data']['ident'] ?? null,
+                    'id' => $response['data']['id'] ?? null,
                     'completed_at' => now(),
                 ]);
                 $transaction->save();

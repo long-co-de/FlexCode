@@ -37,16 +37,16 @@ export default function Login({ status, canResetPassword }) {
             <div className="relative z-10 w-full max-w-md">
                 {/* Header */}
                 <div className="text-center mb-8">
-                    <div className="flex justify-center mb-4">
-                        <img 
-                            src="/logo-dark.png" 
-                            alt="logo" 
+                    <div className="flex items-center align-middle justify-center mb-4">
+                        {/* <img
+                            src="/logo-dark.png"
+                            alt="logo"
                             className="h-10 w-auto dark:hidden"
-                        />
-                        <img 
-                            src="/logo-light.png" 
-                            alt="logo" 
-                            className="h-10 w-auto hidden dark:block"
+                        /> */}
+                        <img
+                            src="/icon.png"
+                            alt="logo"
+                            className="h-16 w-auto  p-2 bg-white rounded-full"
                         />
                         <span className="ml-2 text-xl font-bold bg-gradient-to-r from-sky-500 to-blue-600 bg-clip-text text-transparent">
                             BorrowLite
@@ -78,13 +78,13 @@ export default function Login({ status, canResetPassword }) {
                         {/* Email Input */}
                         <div className="space-y-2">
                             <div className="flex items-center justify-between">
-                                <InputLabel 
-                                    htmlFor="email" 
-                                    value="Email" 
+                                <InputLabel
+                                    htmlFor="email"
+                                    value="Email"
                                     className="text-sm font-medium text-gray-700 dark:text-gray-300"
                                 />
                             </div>
-                            
+
                             <div className="relative">
                                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                                     <svg className="h-5 w-5 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -96,7 +96,7 @@ export default function Login({ status, canResetPassword }) {
                                     type="email"
                                     name="email"
                                     value={data.email}
-                                    className="pl-10 block w-full rounded-xl border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-sky-500 dark:focus:border-sky-400 focus:ring-sky-500 dark:focus:ring-sky-400 transition-colors"
+                                    className="ps-10  block w-full rounded-xl border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-sky-500 dark:focus:border-sky-400 focus:ring-sky-500 dark:focus:ring-sky-400 transition-colors ps-10"
                                     autoComplete="username"
                                     isFocused={true}
                                     onChange={(e) => setData('email', e.target.value)}
@@ -108,21 +108,21 @@ export default function Login({ status, canResetPassword }) {
                         {/* Password Input */}
                         <div className="space-y-2">
                             <div className="flex items-center justify-between">
-                                <InputLabel 
-                                    htmlFor="password" 
-                                    value="Password" 
-                                    className="text-sm font-medium text-gray-700 dark:text-gray-300"
+                                <InputLabel
+                                    htmlFor="password"
+                                    value="Password"
+                                    className="text-sm font-medium text-gray-700 dark:text-gray-300 "
                                 />
                                 {canResetPassword && (
                                     <Link
                                         href={route('password.request')}
-                                        className="text-sm font-medium text-sky-600 dark:text-sky-400 hover:text-sky-500 dark:hover:text-sky-300 transition-colors"
+                                        className="text-sm font-medium text-sky-600 dark:text-sky-400 hover:text-sky-500 dark:hover:text-sky-300 transition-colors "
                                     >
                                         Forgot password?
                                     </Link>
                                 )}
                             </div>
-                            
+
                             <div className="relative">
                                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                                     <svg className="h-5 w-5 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -134,7 +134,7 @@ export default function Login({ status, canResetPassword }) {
                                     type="password"
                                     name="password"
                                     value={data.password}
-                                    className="pl-10 block w-full rounded-xl border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-sky-500 dark:focus:border-sky-400 focus:ring-sky-500 dark:focus:ring-sky-400 transition-colors"
+                                    className="pl-10 block w-full rounded-xl border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-sky-500 dark:focus:border-sky-400 focus:ring-sky-500 dark:focus:ring-sky-400 transition-colors ps-10"
                                     autoComplete="current-password"
                                     onChange={(e) => setData('password', e.target.value)}
                                 />
@@ -153,8 +153,8 @@ export default function Login({ status, canResetPassword }) {
                                         onChange={(e) => setData('remember', e.target.checked)}
                                         className="sr-only"
                                     />
-                                    <div className={`w-4 h-4 border rounded transition-colors ${data.remember 
-                                        ? 'bg-sky-500 dark:bg-sky-400 border-sky-500 dark:border-sky-400' 
+                                    <div className={`w-4 h-4 border rounded transition-colors ${data.remember
+                                        ? 'bg-sky-500 dark:bg-sky-400 border-sky-500 dark:border-sky-400'
                                         : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700'
                                     }`}>
                                         {data.remember && (
@@ -170,7 +170,7 @@ export default function Login({ status, canResetPassword }) {
 
                         {/* Submit Button */}
                         <div className="pt-2">
-                            <PrimaryButton 
+                            <PrimaryButton
                                 className="w-full py-3 rounded-xl text-center text-sm font-medium bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 text-white shadow-md hover:shadow-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                                 disabled={processing}
                             >

@@ -174,13 +174,9 @@ class ElectricityController extends AtomicController
 
         $provider = ElectricityProvider::findOrFail($request->electricity_provider_id);
 
-        // Calculate charges: if amount <= 1000 then charge = 1000, else charge = 200
-        $charge = $request->amount <= 1000 ? 1000 : 200;
-        $totalAmount = $request->amount + $charge;
-
-        // For backward compatibility, split into vat and fee
         $vat = 100;
-        $fee = $charge - $vat; // This ensures vat + fee = charge
+        $fee = 100;
+        $totalAmount = $request->amount + $fee + $vat;
 
         try {
             $result = $this->processAtomicTransaction($user->id, $totalAmount, function ($lockedUser) use ($request, $provider, $totalAmount, $fee, $vat, $requestId) {
@@ -237,11 +233,7 @@ class ElectricityController extends AtomicController
                 $apiData = $vt['data'] ?? [];
                 $token = $vt['token'] ?? null;
                 $units = $vt['units'] ?? null;
-                $apiTransactionId = $vt['api_transaction_id']
-                    ?? $apiData['id']
-                    ?? $apiData['ident']
-                    ?? $apiData['transaction_id']
-                    ?? null;
+                $apiTransactionId = $apiData['id'] ?? $apiData['ident'] ?? null;
 
                 // Clean token by removing "Token : " prefix if present
                 $cleanToken = $token;
@@ -256,9 +248,7 @@ class ElectricityController extends AtomicController
                     'original_token' => $token, // Keep original for reference
                     'units' => $units,
                     'api_transaction_id' => $apiTransactionId,
-                    'api_status' => $vt['api_status'] ?? null,
                     'api_response_received_at' => now(),
-                    "id"=>$apiTransactionId,
                 ]);
 
                 // Check if we have a token

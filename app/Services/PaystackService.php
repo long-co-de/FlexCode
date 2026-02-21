@@ -38,7 +38,7 @@ class PaystackService
      */
     public function calculateServiceFee($amount)
     {
-        $fee = ($amount * 1.5) / 100;
+        $fee = ($amount * 2) / 100;
         if ($amount >= 2000) {
             $fee += 100;
         }
@@ -61,7 +61,7 @@ class PaystackService
     public function calculateDedicatedAccountProfit($amount)
     {
         // Calculate 1% charge
-        $onePercentCharge = ($amount * 1.0) / 100;
+        $onePercentCharge = ($amount * 1) / 100;
 
         // Paystack takes maximum of 300
         $paystackCharge = min($onePercentCharge, 300);

@@ -326,22 +326,42 @@ const Data = ({ auth, networks, eligibility, activeBorrowings, borrowSettings, h
 
                                     <div className="grid gap-3">
                                         {plans.length > 0 ? (
-                                            getSortedPlans(plans).map((plan) => (
-                                                <button
-                                                    key={plan.id}
-                                                    onClick={() => handlePlanSelect(plan)}
-                                                    className="p-5 rounded-2xl border-2 border-slate-50 bg-slate-50/50 hover:border-indigo-100 hover:bg-indigo-50 transition-all text-left flex items-center justify-between group"
-                                                >
-                                                    <div>
-                                                        <p className="text-lg font-black text-slate-800 group-hover:text-indigo-600 transition-colors">{plan.data_amount}</p>
-                                                        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{plan.validity}</p>
-                                                    </div>
-                                                    <div className="text-right">
-                                                        <p className="text-lg font-black text-slate-800">₦{parseFloat(plan.selling_price).toLocaleString()}</p>
-                                                        <p className="text-[10px] font-bold text-emerald-500 uppercase tracking-tighter">Instant Delivery</p>
-                                                    </div>
-                                                </button>
-                                            ))
+                                            getSortedPlans(plans).map((plan) => {
+                                                const isOutOfOrder = 
+                                                    plan.plan_type?.toUpperCase() === 'SME' || 
+                                                    plan.plan_type?.toUpperCase() === 'CORPORATE GIFTING' ||
+                                                    plan.data_amount?.toUpperCase().includes('CORPORATE GIFTING') ||
+                                                    plan.data_amount?.toUpperCase().includes('SME');
+
+                                                return (
+                                                    <button
+                                                        key={plan.id}
+                                                        onClick={() => !isOutOfOrder && handlePlanSelect(plan)}
+                                                        disabled={isOutOfOrder}
+                                                        className={`p-5 rounded-2xl border-2 transition-all text-left flex items-center justify-between group relative overflow-hidden ${
+                                                            isOutOfOrder
+                                                            ? 'opacity-60 cursor-not-allowed bg-slate-50 border-slate-200'
+                                                            : 'border-slate-50 bg-slate-50/50 hover:border-indigo-100 hover:bg-indigo-50'
+                                                        }`}
+                                                    >
+                                                        {isOutOfOrder && (
+                                                            <div className="absolute top-2 right-2">
+                                                                <span className="bg-rose-500 text-white text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest">Out of Order</span>
+                                                            </div>
+                                                        )}
+                                                        <div>
+                                                            <p className={`text-lg font-black transition-colors ${isOutOfOrder ? 'text-slate-400' : 'text-slate-800 group-hover:text-indigo-600'}`}>{plan.data_amount}</p>
+                                                            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{plan.validity}</p>
+                                                        </div>
+                                                        <div className="text-right">
+                                                            <p className={`text-lg font-black ${isOutOfOrder ? 'text-slate-400' : 'text-slate-800'}`}>₦{parseFloat(plan.selling_price).toLocaleString()}</p>
+                                                            <p className={`text-[10px] font-bold uppercase tracking-tighter ${isOutOfOrder ? 'text-slate-400' : 'text-emerald-500'}`}>
+                                                                {isOutOfOrder ? 'Unavailable' : 'Instant Delivery'}
+                                                            </p>
+                                                        </div>
+                                                    </button>
+                                                );
+                                            })
                                         ) : (
                                             <div className="py-12 text-center">
                                                 <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-300">

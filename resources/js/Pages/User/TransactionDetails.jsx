@@ -92,8 +92,8 @@ export default function TransactionDetails({ auth, transaction }) {
             user={auth.user}
             header={
                 <div className="flex items-center gap-4">
-                    <Link 
-                        href={route("transactions")} 
+                    <Link
+                        href={route("transactions")}
                         className="btn btn-ghost btn-circle"
                     >
                         <FaArrowLeft />
@@ -114,16 +114,16 @@ export default function TransactionDetails({ auth, transaction }) {
                         {/* Header Branding */}
                         <div className={`p-6 sm:p-8 text-center border-b border-base-300 ${styles.bg}`}>
                             <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-base-content/10 to-transparent"></div>
-                            <img 
-                                src="/logo.jpg" 
-                                alt="Logo" 
-                                className="h-10 sm:h-12 mx-auto mb-6 rounded-xl shadow-sm bg-base-200 p-2" 
+                            <img
+                                src="/logo.jpg"
+                                alt="Logo"
+                                className="h-10 sm:h-12 mx-auto mb-6 rounded-xl shadow-sm bg-base-200 p-2"
                             />
-                            
+
                             <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl sm:rounded-[2rem] bg-base-100 shadow-lg flex items-center justify-center mx-auto mb-4 text-3xl sm:text-4xl">
                                 {styles.icon}
                             </div>
-                            
+
                             <h3 className="text-2xl sm:text-3xl font-bold text-base-content mb-2">
                                 ₦{transaction.amount.toLocaleString()}
                             </h3>
@@ -140,7 +140,7 @@ export default function TransactionDetails({ auth, transaction }) {
                             <div className="grid gap-4">
                                 <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 group">
                                     <span className="text-xs font-bold text-base-content/60 uppercase tracking-widest">Reference</span>
-                                    <button 
+                                    <button
                                         onClick={copyReference}
                                         className="flex items-center gap-2 font-bold text-base-content hover:text-primary transition-colors min-w-0"
                                     >
@@ -191,6 +191,24 @@ export default function TransactionDetails({ auth, transaction }) {
                                                 <span className="text-sm font-bold text-primary tracking-widest">{transaction.meta_data.coupon_code}</span>
                                             </div>
                                         )}
+                                        {transaction.type === 'electricity' && transaction.meta_data.token && (
+                                            <div className="flex justify-between items-center bg-success/10 p-4 rounded-2xl border border-success/20">
+                                                <div>
+                                                    <span className="text-xs font-bold text-success uppercase tracking-widest">Electricity Token</span>
+                                                    <p className="text-sm font-bold text-base-content mt-1">{transaction.meta_data.token}</p>
+                                                </div>
+                                                <button
+                                                    onClick={() => {
+                                                        navigator.clipboard.writeText(transaction.meta_data.token.replace('Token : ', ''));
+                                                        setCopySuccess(true);
+                                                        setTimeout(() => setCopySuccess(false), 2000);
+                                                    }}
+                                                    className="btn btn-ghost btn-sm"
+                                                >
+                                                    <FaCopy className={`text-xs ${copySuccess ? 'text-success' : 'text-base-content/30'}`} />
+                                                </button>
+                                            </div>
+                                        )}
                                     </div>
                                 )}
                             </div>
@@ -209,7 +227,7 @@ export default function TransactionDetails({ auth, transaction }) {
                             href={route("transactions.receipt", transaction.id)}
                             className="btn btn-outline rounded-2xl gap-3 py-4"
                         >
-                            <FaDownload className="text-primary" /> 
+                            <FaDownload className="text-primary" />
                             <span className="text-xs font-bold uppercase tracking-widest">Save Receipt</span>
                         </a>
 
@@ -217,7 +235,7 @@ export default function TransactionDetails({ auth, transaction }) {
                             onClick={() => setShowShareModal(true)}
                             className="btn btn-primary rounded-2xl gap-3 py-4"
                         >
-                            <FaShare /> 
+                            <FaShare />
                             <span className="text-xs font-bold uppercase tracking-widest">Share via Email</span>
                         </button>
                     </div>
@@ -237,9 +255,9 @@ export default function TransactionDetails({ auth, transaction }) {
 
                     <form onSubmit={handleSubmit} className="space-y-6">
                         <div>
-                            <InputLabel 
-                                value="Email Address" 
-                                className="text-xs font-bold text-base-content/60 uppercase tracking-widest mb-2" 
+                            <InputLabel
+                                value="Email Address"
+                                className="text-xs font-bold text-base-content/60 uppercase tracking-widest mb-2"
                             />
                             <TextInput
                                 type="email"

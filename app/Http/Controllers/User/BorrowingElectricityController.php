@@ -36,13 +36,13 @@ class BorrowingElectricityController extends AtomicController
     public function index()
     {
         $user = Auth::user();
-        
+
         // Check eligibility with service type
         $eligibility = $this->eligibilityService->checkEligibility($user, 'electricity');
-        
+
         // Check if user has active card
         $hasActiveCard = $user->cards()->where('is_active', true)->exists();
-        
+
         $providers = ElectricityProvider::where('is_active', true)->get();
 
         // Get active borrowings
@@ -142,7 +142,7 @@ class BorrowingElectricityController extends AtomicController
             'electricity_provider_id' => 'required|exists:electricity_providers,id',
             'meter_number' => 'required|string',
             'meter_type' => 'required|string|in:prepaid,postpaid',
-            'amount' => 'required|numeric|min:500|max:20000',
+            'amount' => 'required|numeric|min:1000|max:20000',
             'duration' => 'nullable|integer|in:3,7',
             'customer_name' => 'required|string',
             'address' => 'required|string',

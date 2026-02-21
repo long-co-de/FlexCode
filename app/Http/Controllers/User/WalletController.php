@@ -97,6 +97,7 @@ class WalletController extends AtomicController
      */
     public function fund(Request $request)
     {
+        require back()->with('info', 'Wallet funding is currently under maintenance. Please try again later.');
         $request->validate([
             'amount' => 'required|numeric|min:100',
             'payment_method_id' => 'required|exists:payment_methods,id',

@@ -3,7 +3,7 @@
 namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
-use App\Services\HusmodataService;
+use App\Services\DatavendroService;
 use Illuminate\Support\Facades\Log;
 
 class UpdateDataPlansFromApi extends Command
@@ -20,27 +20,27 @@ class UpdateDataPlansFromApi extends Command
      *
      * @var string
      */
-    protected $description = 'Update data plans from Husmodata API and store in database';
+    protected $description = 'Update data plans from Datavendro API and store in database';
 
     /**
      * Execute the console command.
      */
     public function handle()
     {
-        $this->info('Starting data plans update from Husmodata API...');
+        $this->info('Starting data plans update from Datavendro API...');
         Log::info('=== Starting Data Plans Update ===');
 
         try {
-            $husmodataService = app(HusmodataService::class);
+            $datavendroService = app(DatavendroService::class);
 
-            $this->info('[DEBUG] Initialized HusmodataService');
-            Log::info('[DEBUG] Initialized HusmodataService');
+            $this->info('[DEBUG] Initialized DatavendroService');
+            Log::info('[DEBUG] Initialized DatavendroService');
 
             // Get all data plans from API and store in database
             $this->info('[DEBUG] Fetching data plans from API...');
             Log::info('[DEBUG] Fetching data plans from API...');
 
-            $response = $husmodataService->getAllDataPlans(true);
+            $response = $datavendroService->getAllDataPlans(true);
 
             $this->info('[DEBUG] API Response received');
             Log::info('[DEBUG] API Response', [

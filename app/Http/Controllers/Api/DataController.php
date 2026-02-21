@@ -7,7 +7,7 @@ use Illuminate\Http\Request;
 use App\Models\Network;
 use App\Models\DataPlan;
 use App\Models\Transaction;
-use App\Services\HusmodataService;
+use App\Services\DatavendroService;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -18,11 +18,11 @@ class DataController extends AtomicController
 {
     use ProProfitCalculator;
 
-    protected $husmodataService;
+    protected $datavendroService;
 
-    public function __construct(HusmodataService $husmodataService)
+    public function __construct(DatavendroService $datavendroService)
     {
-        $this->husmodataService = $husmodataService;
+        $this->datavendroService = $datavendroService;
     }
 
     /**
@@ -104,7 +104,7 @@ class DataController extends AtomicController
                     'status' => 'pending',
                     'recipient' => $request->phone_number,
                     'description' => $plan->network->name . ' ' . $plan->name . ' Data Purchase to ' . $request->phone_number,
-                    'metadata' => [
+                    'meta_data' => [
                         'network' => $plan->network->name,
                         'network_code' => $plan->network->code,
                         'plan_name' => $plan->name,
@@ -122,7 +122,7 @@ class DataController extends AtomicController
                 $this->deductWallet($lockedUser, $plan->selling_price, 'API data purchase');
 
                 // Call external service
-                $response = $this->husmodataService->buyData(
+                $response = $this->datavendroService->buyData(
                     $request->phone_number,
                     $plan->network->code,
                     $plan->dataplan_id ?? $plan->code,
@@ -133,13 +133,20 @@ class DataController extends AtomicController
                 if ($response['success']) {
                     // Update transaction status
                     $transaction->status = 'successful';
+                    $transaction->meta_data = array_merge($transaction->meta_data ?? [], [
+                        'api_response' => $response['data'] ?? null,
+                        'api_transaction_id' => $response['api_transaction_id']
+                            ?? ($response['data']['id'] ?? ($response['data']['ident'] ?? null)),
+                        'api_status' => $response['api_status'] ?? null,
+                        'completed_at' => now(),
+                    ]);
                     $transaction->save();
 
                     // Calculate and record system profit
                     $profit = $this->calculateProfitMargin($plan->selling_price, 'data');
                     $transaction->profit = $profit;
                     $transaction->save();
-                    
+
                     $this->recordSystemProfit($transaction, $profit, 'data');
 
                     return [
@@ -154,7 +161,7 @@ class DataController extends AtomicController
 
                     // Update transaction status
                     $transaction->status = 'failed';
-                    $transaction->metadata = array_merge($transaction->metadata ?? [], [
+                    $transaction->meta_data = array_merge($transaction->meta_data ?? [], [
                         'error_message' => $response['message'] ?? 'Unknown error'
                     ]);
                     $transaction->save();
@@ -173,6 +180,7 @@ class DataController extends AtomicController
                 'message' => $e->getMessage(),
             ], 400);
         }
+    }
     protected function calculateProfitMargin($amount, $type = 'data')
     {
         return $this->isProUser()

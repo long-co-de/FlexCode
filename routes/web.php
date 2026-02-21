@@ -410,6 +410,8 @@ Route::middleware(['auth', 'verified', \App\Http\Middleware\CheckActive::class])
 
             // Cron Job Logs Management
             Route::get('/cron-logs', [\App\Http\Controllers\Admin\CronLogController::class, 'index'])->name('cron-logs.index');
+            Route::post('/cron-logs/dispatch', [\App\Http\Controllers\Admin\CronLogController::class, 'dispatchCommand'])->name('cron-logs.dispatch');
+            Route::post('/cron-logs/dispatch-all', [\App\Http\Controllers\Admin\CronLogController::class, 'dispatchAll'])->name('cron-logs.dispatch-all');
             Route::get('/cron-logs/{cronLog}', [\App\Http\Controllers\Admin\CronLogController::class, 'show'])->name('cron-logs.show');
             Route::get('/cron-logs/command/{commandName}', [\App\Http\Controllers\Admin\CronLogController::class, 'command'])->name('cron-logs.command');
         });

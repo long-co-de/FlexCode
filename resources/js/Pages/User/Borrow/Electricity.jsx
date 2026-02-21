@@ -4,9 +4,9 @@ import AppLayout from '@/Layouts/AppLayout';
 import EligibilityAlert from '@/Components/EligibilityAlert';
 import Modal from '@/Components/Modal';
 import axios from 'axios';
-import { 
-    FaBolt, FaLightbulb, FaSearch, FaUser, FaHistory, 
-    FaWallet, FaCheckCircle, FaTimes, FaShieldAlt, 
+import {
+    FaBolt, FaLightbulb, FaSearch, FaUser, FaHistory,
+    FaWallet, FaCheckCircle, FaTimes, FaShieldAlt,
     FaInfoCircle, FaCreditCard, FaMapMarkerAlt, FaPercent,
     FaArrowRight, FaClock, FaExclamationTriangle
 } from 'react-icons/fa';
@@ -188,7 +188,7 @@ const Electricity = ({ auth, providers, eligibility, activeBorrowings, borrowSet
             <div className="py-8">
                 <div className="max-w-5xl mx-auto px-4">
                     <EligibilityAlert eligibility={eligibility} />
-                    
+
                     <div className="grid lg:grid-cols-12 gap-8 mt-6">
                         <div className="lg:col-span-8 space-y-6">
                             {/* Borrow Badge */}
@@ -226,8 +226,8 @@ const Electricity = ({ auth, providers, eligibility, activeBorrowings, borrowSet
                                                     setMeterVerified(null);
                                                 }}
                                                 className={`relative group p-4 rounded-3xl border-2 transition-all text-center ${
-                                                    isActive 
-                                                    ? 'border-sky-500 bg-sky-50 shadow-md shadow-sky-100' 
+                                                    isActive
+                                                    ? 'border-sky-500 bg-sky-50 shadow-md shadow-sky-100'
                                                     : 'border-slate-50 bg-slate-50/50 hover:border-slate-200'
                                                 }`}
                                             >
@@ -258,7 +258,7 @@ const Electricity = ({ auth, providers, eligibility, activeBorrowings, borrowSet
                                     </div>
                                     Meter Information
                                 </h4>
-                                
+
                                 <div className="space-y-6">
                                     <div className="grid grid-cols-2 gap-4">
                                         {['prepaid', 'postpaid'].map((type) => (
@@ -267,8 +267,8 @@ const Electricity = ({ auth, providers, eligibility, activeBorrowings, borrowSet
                                                 type="button"
                                                 onClick={() => setData('meter_type', type)}
                                                 className={`py-3 rounded-2xl border-2 font-black text-[10px] uppercase tracking-widest transition-all ${
-                                                    data.meter_type === type 
-                                                    ? 'border-sky-500 bg-sky-50 text-sky-700' 
+                                                    data.meter_type === type
+                                                    ? 'border-sky-500 bg-sky-50 text-sky-700'
                                                     : 'border-slate-50 bg-slate-50 text-slate-500'
                                                 }`}
                                             >
@@ -334,7 +334,7 @@ const Electricity = ({ auth, providers, eligibility, activeBorrowings, borrowSet
                                     </div>
                                     Borrow Amount
                                 </h4>
-                                
+
                                 <div className="space-y-6">
                                     {/* Duration Selection */}
                                     <div className="space-y-3">
@@ -344,8 +344,8 @@ const Electricity = ({ auth, providers, eligibility, activeBorrowings, borrowSet
                                                 type="button"
                                                 onClick={() => setData('duration', 3)}
                                                 className={`py-4 rounded-2xl border-2 transition-all flex flex-col items-center justify-center gap-1 ${
-                                                    data.duration === 3 
-                                                    ? 'border-sky-500 bg-sky-50 shadow-md shadow-sky-100' 
+                                                    data.duration === 3
+                                                    ? 'border-sky-500 bg-sky-50 shadow-md shadow-sky-100'
                                                     : 'border-slate-50 bg-slate-50/50 hover:border-slate-200'
                                                 }`}
                                             >
@@ -356,8 +356,8 @@ const Electricity = ({ auth, providers, eligibility, activeBorrowings, borrowSet
                                                 type="button"
                                                 onClick={() => setData('duration', 7)}
                                                 className={`py-4 rounded-2xl border-2 transition-all flex flex-col items-center justify-center gap-1 ${
-                                                    data.duration === 7 
-                                                    ? 'border-sky-500 bg-sky-50 shadow-md shadow-sky-100' 
+                                                    data.duration === 7
+                                                    ? 'border-sky-500 bg-sky-50 shadow-md shadow-sky-100'
                                                     : 'border-slate-50 bg-slate-50/50 hover:border-slate-200'
                                                 }`}
                                             >
@@ -379,7 +379,7 @@ const Electricity = ({ auth, providers, eligibility, activeBorrowings, borrowSet
                                         <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-black text-xl">₦</div>
                                     </div>
                                     <div className="flex justify-between items-center px-2">
-                                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Min: ₦{borrowSettings_?.min_amount || 500}</span>
+                                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Min: ₦{borrowSettings_?.min_amount || 1000}</span>
                                         <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Max: ₦{maxBorrowableAmount.toLocaleString()}</span>
                                     </div>
                                 </div>
@@ -428,13 +428,13 @@ const Electricity = ({ auth, providers, eligibility, activeBorrowings, borrowSet
                                     ) : (
                                         <button
                                             onClick={handleSubmit}
-                                            disabled={!meterVerified || !data.amount || parseFloat(data.amount) < (borrowSettings_?.min_amount || 500)}
+                                            disabled={!meterVerified || !data.amount || parseFloat(data.amount) < (borrowSettings_?.min_amount || 1000)}
                                             className="w-full py-5 rounded-2xl bg-sky-500 text-white font-black uppercase tracking-[0.2em] shadow-xl shadow-sky-500/20 hover:bg-sky-400 transition-all flex items-center justify-center gap-3 disabled:opacity-50"
                                         >
                                             Confirm Borrow <FaArrowRight className="text-xs" />
                                         </button>
                                     )}
-                                    
+
                                     <div className="pt-4 text-center">
                                         <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest leading-relaxed">
                                             By clicking confirm, you agree to our credit terms and automated repayment policy.

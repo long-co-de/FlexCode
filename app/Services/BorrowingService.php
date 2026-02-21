@@ -13,24 +13,21 @@ use Illuminate\Support\Facades\Log;
 
 class BorrowingService
 {
-    protected $husmodataService;
-
     protected $eligibilityService;
 
     protected $paymentService;
 
     protected $datavendroService;
 
+
     public function __construct(
         PaymentService $paymentService,
         BorrowingEligibilityService $eligibilityService,
-        DatavendroService $datavendroService,
-        HusmodataService $husmodataService
+        DatavendroService $datavendroService
     ) {
         $this->paymentService = $paymentService;
         $this->eligibilityService = $eligibilityService;
         $this->datavendroService = $datavendroService;
-        $this->husmodataService = $husmodataService;
     }
 
     /**
@@ -458,7 +455,7 @@ class BorrowingService
             return;
         }
 
-        $this->husmodataService->buyData(
+        $this->datavendroService->buyData(
             $phone,
             $network,
             $planId,
@@ -506,5 +503,5 @@ class BorrowingService
     }
     // In PaymentService.php, add this method:
 
-   
+
 }

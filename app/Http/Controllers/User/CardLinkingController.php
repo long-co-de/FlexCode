@@ -351,10 +351,15 @@ class CardLinkingController extends AtomicController
         }
 
         try {
+            // Ensure expMonth is 2 digits
+            $expMonth = str_pad($expMonth, 2, '0', STR_PAD_LEFT);
+            
+            // Check if year is 2 or 4 digits
+            $format = (strlen($expYear) === 4) ? 'm/Y' : 'm/y';
+            
             // Parse expiration date - cards expire at end of the month
-            $expiryDate = \Carbon\Carbon::createFromFormat('m/y', $expMonth . '/' . $expYear)
+            return \Carbon\Carbon::createFromFormat($format, $expMonth . '/' . $expYear)
                 ->endOfMonth();
-            return $expiryDate;
         } catch (\Exception $e) {
             Log::warning('Failed to calculate card expiration date', [
                 'exp_month' => $expMonth,

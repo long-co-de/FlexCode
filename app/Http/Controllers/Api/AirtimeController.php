@@ -121,15 +121,22 @@ class AirtimeController extends AtomicController
 
                 if ($response['success']) {
                     $transaction->status = 'successful';
+                    $transaction->meta_data = array_merge($transaction->meta_data ?? [], [
+                        'api_response' => $response['data'] ?? null,
+                        'api_transaction_id' => $response['api_transaction_id']
+                            ?? ($response['data']['id'] ?? ($response['data']['ident'] ?? null)),
+                        'api_status' => $response['api_status'] ?? null,
+                        'completed_at' => now(),
+                    ]);
                     $transaction->save();
-                    
+
                     // Calculate and record system profit
                     $profit = $this->calculateProfitMargin($request->amount, 'airtime');
                     $transaction->profit = $profit;
                     $transaction->save();
-                    
+
                     $this->recordSystemProfit($transaction, $profit, 'airtime');
-                    
+
                     return [
                         'success' => true,
                         'message' => 'Airtime purchase successful!',
@@ -155,6 +162,7 @@ class AirtimeController extends AtomicController
                 'message' => $e->getMessage(),
             ], 400);
         }
+    }
     protected function calculateProfitMargin($amount, $type = 'airtime')
     {
         return $this->isProUser()

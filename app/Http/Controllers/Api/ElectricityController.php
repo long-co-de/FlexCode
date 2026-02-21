@@ -29,6 +29,10 @@ class ElectricityController extends AtomicController
      */
     public function getProviders()
     {
+        if (ElectricityProvider::count() < 11) {
+            $this->datavendroService->syncProviders();
+        }
+        
         $providers = ElectricityProvider::where('is_active', true)->get();
 
         return response()->json([
@@ -59,6 +63,22 @@ class ElectricityController extends AtomicController
         );
 
         if ($response['success']) {
+            $customer = $response['data'];
+
+            // Check for invalid meter in response
+            if (isset($customer['invalid']) && $customer['invalid'] === true) {
+                return response()->json([
+                    'message' => 'Invalid meter number. Please check and try again.',
+                ], 400);
+            }
+
+            // Additional check for name/address containing "INVALID"
+            if (isset($customer['name']) && str_contains(strtoupper($customer['name']), 'INVALID METER')) {
+                return response()->json([
+                    'message' => 'Invalid meter number. Please check and try again.',
+                ], 400);
+            }
+
             return response()->json([
                 'message' => 'Meter verified successfully',
                 'data' => $response['data'],
@@ -153,16 +173,29 @@ class ElectricityController extends AtomicController
                     $request->amount,
                     $request->meter_type,
                     $reference,
-                    $request->phone_number
+                    $request->phone_number,
+                    $request->customer_name,
+                    $request->customer_address
                 );
 
                 if ($response['success']) {
+                    $token = $response['token'] ?? null;
+                    $cleanToken = $token;
+                    if (!empty($token) && str_starts_with($token, 'Token : ')) {
+                        $cleanToken = substr($token, 8);
+                    }
+
                     // Update transaction status and token
                     $transaction->status = 'successful';
                     $transaction->meta_data = array_merge($transaction->meta_data, [
-                        'token' => $response['token'] ?? null,
+                        'token' => $cleanToken,
+                        'original_token' => $token,
                         'units' => $response['units'] ?? null,
                         'api_response' => $response['data'] ?? null,
+                        'api_transaction_id' => $response['api_transaction_id']
+                            ?? (($response['data']['id'] ?? ($response['data']['ident'] ?? null))),
+                        'api_status' => $response['api_status'] ?? null,
+                        'api_response_received_at' => now(),
                     ]);
                     $transaction->save();
 
@@ -177,7 +210,7 @@ class ElectricityController extends AtomicController
                         'success' => true,
                         'message' => 'Electricity bill payment successful!',
                         'transaction' => $transaction,
-                        'token' => $response['token'] ?? null,
+                        'token' => $cleanToken,
                         'units' => $response['units'] ?? null,
                     ];
                 } else {
@@ -203,6 +236,8 @@ class ElectricityController extends AtomicController
                 'message' => $e->getMessage(),
             ], 400);
         }
+    }
+
     protected function calculateProfitMargin($amount, $type = 'electricity')
     {
         return $this->isProUser()

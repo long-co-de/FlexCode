@@ -1,13 +1,46 @@
-import React, { useState } from 'react';
-import { Link, usePage } from '@inertiajs/react';
+import React, { useState, useEffect } from 'react';
+import { Link, usePage, router } from '@inertiajs/react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import {
     CheckCircleIcon,
     ExclamationCircleIcon,
     ClockIcon,
+    PlayIcon,
+    ArrowPathIcon,
 } from '@heroicons/react/24/outline';
+import { Notify } from 'notiflix';
 
 export default function CronLogsIndex({ logs, stats }) {
+    const { flash } = usePage().props;
+    const [processing, setProcessing] = useState(false);
+
+    useEffect(() => {
+        if (flash?.success) {
+            Notify.success(flash.success);
+        }
+        if (flash?.error) {
+            Notify.failure(flash.error);
+        }
+    }, [flash]);
+
+    const handleRunCommand = (command) => {
+        if (confirm(`Are you sure you want to run '${command}' manually?`)) {
+            setProcessing(true);
+            router.post(route('admin.cron-logs.dispatch'), { command }, {
+                onFinish: () => setProcessing(false),
+            });
+        }
+    };
+
+    const handleRunAll = () => {
+        if (confirm('Are you sure you want to run all scheduled commands? This might take a while.')) {
+            setProcessing(true);
+            router.post(route('admin.cron-logs.dispatch-all'), {}, {
+                onFinish: () => setProcessing(false),
+            });
+        }
+    };
+
     const getStatusIcon = (status) => {
         switch (status) {
             case 'success':
@@ -38,24 +71,45 @@ export default function CronLogsIndex({ logs, stats }) {
     return (
         <AdminLayout header="Cron Job Logs">
             <div className="space-y-6">
+                <div className="flex justify-between items-center">
+                    <h2 className="text-xl font-bold text-gray-900">System Schedules</h2>
+                    <button
+                        onClick={handleRunAll}
+                        disabled={processing}
+                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                    >
+                        <ArrowPathIcon className={`w-5 h-5 ${processing ? 'animate-spin' : ''}`} />
+                        Dispatch All Schedules
+                    </button>
+                </div>
+
                 {/* Statistics Cards */}
                 {Object.keys(stats).length > 0 && (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {Object.entries(stats).map(([command, stat]) => (
-                            <Link
+                            <div
                                 key={command}
-                                href={route('admin.cron-logs.command', command)}
-                                className="block p-6 bg-white rounded-lg border border-gray-200 hover:border-blue-300 hover:shadow-md transition-all"
+                                className="block p-6 bg-white rounded-lg border border-gray-200 hover:border-blue-300 hover:shadow-md transition-all relative group"
                             >
                                 <div className="flex items-start justify-between mb-4">
-                                    <div>
-                                        <h3 className="font-semibold text-gray-900 text-sm">{command}</h3>
+                                    <Link href={route('admin.cron-logs.command', command)} className="flex-1">
+                                        <h3 className="font-semibold text-gray-900 text-sm truncate pr-8">{command}</h3>
                                         <p className="text-xs text-gray-500 mt-1">Last run</p>
+                                    </Link>
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            onClick={() => handleRunCommand(command)}
+                                            disabled={processing}
+                                            title="Run this command now"
+                                            className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-md transition-colors disabled:opacity-50"
+                                        >
+                                            <PlayIcon className="w-5 h-5" />
+                                        </button>
+                                        {stat.last_run && getStatusIcon(stat.last_run.status)}
                                     </div>
-                                    {stat.last_run && getStatusIcon(stat.last_run.status)}
                                 </div>
                                 
-                                <div className="space-y-3 text-sm">
+                                <Link href={route('admin.cron-logs.command', command)} className="space-y-3 text-sm">
                                     <div className="flex justify-between">
                                         <span className="text-gray-600">Total runs:</span>
                                         <span className="font-medium text-gray-900">{stat.total_runs}</span>
@@ -70,8 +124,8 @@ export default function CronLogsIndex({ logs, stats }) {
                                         <span className="text-gray-600">Avg time:</span>
                                         <span className="font-medium text-gray-900">{stat.avg_execution_time}s</span>
                                     </div>
-                                </div>
-                            </Link>
+                                </Link>
+                            </div>
                         ))}
                     </div>
                 )}

@@ -23,10 +23,11 @@ export default function Register() {
         if (codeFromUrl) {
             setData('referral_code', codeFromUrl);
         }
-        
+
         return () => {
             reset('password', 'password_confirmation');
         };
+
     }, []);
 
     const submit = (e) => {
@@ -48,14 +49,14 @@ export default function Register() {
                 {/* Header */}
                 <div className="text-center mb-8">
                     <div className="flex justify-center mb-4">
-                        <img 
-                            src="/logo-dark.png" 
-                            alt="logo" 
+                        <img
+                            src="/logo-dark.png"
+                            alt="logo"
                             className="h-10 w-auto dark:hidden"
                         />
-                        <img 
-                            src="/logo-light.png" 
-                            alt="logo" 
+                        <img
+                            src="/logo-light.png"
+                            alt="logo"
                             className="h-10 w-auto hidden dark:block"
                         />
                         <span className="ml-2 text-xl font-bold bg-gradient-to-r from-sky-500 to-blue-600 bg-clip-text text-transparent">
@@ -75,9 +76,9 @@ export default function Register() {
                     <form onSubmit={submit} className="space-y-6">
                         {/* Full Name */}
                         <div className="space-y-2">
-                            <InputLabel 
-                                htmlFor="name" 
-                                value="Full Name" 
+                            <InputLabel
+                                htmlFor="name"
+                                value="Full Name"
                                 className="text-sm font-medium text-gray-700 dark:text-gray-300"
                             />
                             <div className="relative">
@@ -90,7 +91,7 @@ export default function Register() {
                                     id="name"
                                     name="name"
                                     value={data.name}
-                                    className="pl-10 block w-full rounded-xl border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-sky-500 dark:focus:border-sky-400 focus:ring-sky-500 dark:focus:ring-sky-400 transition-colors"
+                                    className="pl-10 block w-full rounded-xl border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-sky-500 dark:focus:border-sky-400 focus:ring-sky-500 dark:focus:ring-sky-400 transition-colors ps-10"
                                     autoComplete="name"
                                     isFocused={true}
                                     onChange={(e) => setData('name', e.target.value)}
@@ -102,9 +103,9 @@ export default function Register() {
 
                         {/* Email */}
                         <div className="space-y-2">
-                            <InputLabel 
-                                htmlFor="email" 
-                                value="Email Address" 
+                            <InputLabel
+                                htmlFor="email"
+                                value="Email Address"
                                 className="text-sm font-medium text-gray-700 dark:text-gray-300"
                             />
                             <div className="relative">
@@ -118,7 +119,7 @@ export default function Register() {
                                     type="email"
                                     name="email"
                                     value={data.email}
-                                    className="pl-10 block w-full rounded-xl border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-sky-500 dark:focus:border-sky-400 focus:ring-sky-500 dark:focus:ring-sky-400 transition-colors"
+                                    className="pl-10 block w-full rounded-xl border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-sky-500 dark:focus:border-sky-400 focus:ring-sky-500 dark:focus:ring-sky-400 transition-colors ps-10"
                                     autoComplete="username"
                                     onChange={(e) => setData('email', e.target.value)}
                                     required
@@ -129,9 +130,9 @@ export default function Register() {
 
                         {/* Phone Number */}
                         <div className="space-y-2">
-                            <InputLabel 
-                                htmlFor="phone_number" 
-                                value="Phone Number" 
+                            <InputLabel
+                                htmlFor="phone_number"
+                                value="Phone Number"
                                 className="text-sm font-medium text-gray-700 dark:text-gray-300"
                             />
                             <div className="relative">
@@ -145,7 +146,7 @@ export default function Register() {
                                     type="tel"
                                     name="phone_number"
                                     value={data.phone_number || ''}
-                                    className="pl-10 block w-full rounded-xl border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-sky-500 dark:focus:border-sky-400 focus:ring-sky-500 dark:focus:ring-sky-400 transition-colors"
+                                    className="pl-10 block w-full rounded-xl border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-sky-500 dark:focus:border-sky-400 focus:ring-sky-500 dark:focus:ring-sky-400 transition-colors ps-10"
                                     autoComplete="tel"
                                     placeholder="e.g., +2348012345678"
                                     onChange={(e) => setData('phone_number', e.target.value)}
@@ -157,9 +158,9 @@ export default function Register() {
 
                         {/* Password - Fixed ID */}
                         <div className="space-y-2">
-                            <InputLabel 
-                                htmlFor="password" 
-                                value="Password" 
+                            <InputLabel
+                                htmlFor="password"
+                                value="Password"
                                 className="text-sm font-medium text-gray-700 dark:text-gray-300"
                             />
                             <div className="relative">
@@ -173,7 +174,7 @@ export default function Register() {
                                     type="password"
                                     name="password"
                                     value={data.password}
-                                    className="pl-10 block w-full rounded-xl border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-sky-500 dark:focus:border-sky-400 focus:ring-sky-500 dark:focus:ring-sky-400 transition-colors"
+                                    className="pl-10 block w-full rounded-xl border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-sky-500 dark:focus:border-sky-400 focus:ring-sky-500 dark:focus:ring-sky-400 transition-colors ps-10"
                                     autoComplete="new-password"
                                     onChange={(e) => setData('password', e.target.value)}
                                     required
@@ -184,9 +185,9 @@ export default function Register() {
 
                         {/* Confirm Password */}
                         <div className="space-y-2">
-                            <InputLabel 
-                                htmlFor="password_confirmation" 
-                                value="Confirm Password" 
+                            <InputLabel
+                                htmlFor="password_confirmation"
+                                value="Confirm Password"
                                 className="text-sm font-medium text-gray-700 dark:text-gray-300"
                             />
                             <div className="relative">
@@ -200,7 +201,7 @@ export default function Register() {
                                     type="password"
                                     name="password_confirmation"
                                     value={data.password_confirmation}
-                                    className="pl-10 block w-full rounded-xl border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-sky-500 dark:focus:border-sky-400 focus:ring-sky-500 dark:focus:ring-sky-400 transition-colors"
+                                    className="pl-10 block w-full rounded-xl border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-sky-500 dark:focus:border-sky-400 focus:ring-sky-500 dark:focus:ring-sky-400 transition-colors ps-10"
                                     autoComplete="new-password"
                                     onChange={(e) => setData('password_confirmation', e.target.value)}
                                     required
@@ -211,9 +212,9 @@ export default function Register() {
 
                         {/* Referral Code */}
                         <div className="space-y-2">
-                            <InputLabel 
-                                htmlFor="referral_code" 
-                                value="Referral Code (Optional)" 
+                            <InputLabel
+                                htmlFor="referral_code"
+                                value="Referral Code (Optional)"
                                 className="text-sm font-medium text-gray-700 dark:text-gray-300"
                             />
                             <div className="relative">
@@ -227,7 +228,7 @@ export default function Register() {
                                     type="text"
                                     name="referral_code"
                                     value={data.referral_code}
-                                    className="pl-10 block w-full rounded-xl border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-sky-500 dark:focus:border-sky-400 focus:ring-sky-500 dark:focus:ring-sky-400 transition-colors"
+                                    className="pl-10 block w-full rounded-xl border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-sky-500 dark:focus:border-sky-400 focus:ring-sky-500 dark:focus:ring-sky-400 transition-colors ps-10"
                                     onChange={(e) => setData('referral_code', e.target.value)}
                                 />
                             </div>
@@ -258,7 +259,7 @@ export default function Register() {
 
                         {/* Submit Button */}
                         <div className="pt-2">
-                            <PrimaryButton 
+                            <PrimaryButton
                                 className="w-full py-3 rounded-xl text-center text-sm font-medium bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 text-white shadow-md hover:shadow-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                                 disabled={processing}
                             >

@@ -170,13 +170,13 @@ export default function Dashboard({ auth, transactionStats, recentTransactions, 
                         </div>
 
                         <div className="flex gap-3">
-                            <Link
+                            {/* <Link
                                 href={route('wallet')}
                                 className="flex-1 h-12 bg-primary text-primary-content rounded-2xl flex items-center justify-center gap-2 font-black text-sm hover:bg-primary-focus transition-all shadow-lg"
                             >
                                 <FaPlus className="text-xs" />
                                 Add Money
-                            </Link>
+                            </Link> */}
                             <Link
                                 href={route('borrow.index')}
                                 className="flex-1 h-12 bg-base-100/20 text-base-content rounded-2xl flex items-center justify-center gap-2 font-black text-sm hover:bg-base-100/30 transition-all border border-base-content/10 backdrop-blur-md"
@@ -214,8 +214,8 @@ export default function Dashboard({ auth, transactionStats, recentTransactions, 
                                     <button
                                         onClick={copyReferralCode}
                                         className={`px-3 py-1 rounded-lg text-[9px] sm:text-[10px] font-bold transition-all flex-shrink-0 ${
-                                            copiedCode 
-                                                ? 'bg-success/20 text-success' 
+                                            copiedCode
+                                                ? 'bg-success/20 text-success'
                                                 : 'bg-primary/20 text-primary hover:bg-primary/30'
                                         }`}
                                     >
@@ -229,15 +229,15 @@ export default function Dashboard({ auth, transactionStats, recentTransactions, 
                                     Manage
                                 </Link>
                             </div>
-                            
+
                             {referralUrl && (
                                 <div className="bg-base-100/60 px-3 py-2 rounded-xl border border-base-300/50 flex items-center justify-between gap-3 w-full overflow-hidden">
                                     <span className="text-[9px] sm:text-[10px] font-medium text-base-content/60 truncate flex-1 min-w-0">{referralUrl}</span>
                                     <button
                                         onClick={copyReferralUrl}
                                         className={`px-3 py-1 rounded-lg text-[9px] sm:text-[10px] font-bold transition-all flex-shrink-0 ${
-                                            copiedUrl 
-                                                ? 'bg-success/20 text-success' 
+                                            copiedUrl
+                                                ? 'bg-success/20 text-success'
                                                 : 'bg-base-300 text-base-content hover:bg-base-400'
                                         }`}
                                     >
@@ -289,7 +289,7 @@ export default function Dashboard({ auth, transactionStats, recentTransactions, 
                                                 <p className="text-[10px] font-black uppercase text-base-content/50 tracking-widest mb-0.5">{account.bank_name}</p>
                                                 <div className="flex items-center gap-2">
                                                     <p className="text-xl font-black text-base-content">{account.account_number}</p>
-                                                    <button 
+                                                    <button
                                                         onClick={() => copyToClipboard(account.account_number)}
                                                         className="p-1.5 text-base-content/30 hover:text-primary transition-colors"
                                                     >
@@ -312,7 +312,7 @@ export default function Dashboard({ auth, transactionStats, recentTransactions, 
                                     <FaUniversity className="text-2xl" />
                                 </div>
                                 <p className="text-sm font-bold text-base-content/40">No virtual accounts generated yet.</p>
-                                <button 
+                                <button
                                     onClick={generateAccount}
                                     className="mt-4 px-8 py-3 bg-primary text-primary-content text-[10px] font-black rounded-xl uppercase tracking-widest hover:bg-primary/90 transition-all shadow-lg"
                                 >

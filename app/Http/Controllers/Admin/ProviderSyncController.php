@@ -3,18 +3,18 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Services\HusmodataService;
+use App\Services\DatavendroService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 
 class ProviderSyncController extends Controller
 {
-    private $husmodataService;
+    private $datavendroService;
 
-    public function __construct(HusmodataService $husmodataService)
+    public function __construct(DatavendroService $datavendroService)
     {
-        $this->husmodataService = $husmodataService;
+        $this->datavendroService = $datavendroService;
     }
 
     public function index()
@@ -28,18 +28,18 @@ class ProviderSyncController extends Controller
     public function sync(Request $request)
     {
         try {
-            Log::info('Manual Husmodata sync initiated by admin', [
+            Log::info('Manual Datavendro sync initiated by admin', [
                 'user_id' => auth()->id(),
                 'ip' => $request->ip(),
             ]);
 
-            $response = $this->husmodataService->getAllDataPlans(true);
+            $response = $this->datavendroService->getAllDataPlans(true);
 
             if ($response['success']) {
-                Log::info('Manual Husmodata sync completed successfully', [
+                Log::info('Manual Datavendro sync completed successfully', [
                     'user_id' => auth()->id(),
                 ]);
-                return redirect()->back()->with('success', 'Husmodata data plans synced successfully!');
+                return redirect()->back()->with('success', 'Datavendro data plans synced successfully!');
             }
 
             return redirect()->back()->with('error', 'Sync failed: ' . ($response['message'] ?? 'Unknown error'));
@@ -56,16 +56,16 @@ class ProviderSyncController extends Controller
     public function testConnection()
     {
         try {
-            $balance = $this->husmodataService->getBalance();
+            $balance = $this->datavendroService->getBalance();
 
             if ($balance['success']) {
-                Log::info('Husmodata API connection test successful', [
+                Log::info('Datavendro API connection test successful', [
                     'user_id' => auth()->id(),
                 ]);
 
                 return response()->json([
                     'success' => true,
-                    'message' => 'Connected to Husmodata API successfully!',
+                    'message' => 'Connected to Datavendro API successfully!',
                     'data' => $balance['data'],
                 ]);
             } else {
@@ -75,7 +75,7 @@ class ProviderSyncController extends Controller
                 ], 400);
             }
         } catch (\Exception $e) {
-            Log::error('Husmodata API connection test failed', [
+            Log::error('Datavendro API connection test failed', [
                 'user_id' => auth()->id(),
                 'error' => $e->getMessage(),
             ]);

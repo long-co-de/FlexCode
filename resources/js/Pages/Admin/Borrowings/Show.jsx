@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { Head, Link, useForm } from '@inertiajs/react';
 import AdminLayout from '@/Layouts/AdminLayout';
-import { 
-    CheckIcon, 
-    XMarkIcon, 
+import {
+    CheckIcon,
+    XMarkIcon,
     DocumentTextIcon,
     ArrowLeftIcon,
     UserIcon,
@@ -13,7 +13,8 @@ import {
     ClockIcon,
     ShieldCheckIcon,
     ExclamationTriangleIcon,
-    CheckCircleIcon
+    CheckCircleIcon,
+    ArrowPathIcon
 } from '@heroicons/react/24/outline';
 
 export default function Show({ auth, borrowing }) {
@@ -63,20 +64,20 @@ export default function Show({ auth, borrowing }) {
     const StatusIcon = statusConfig.icon;
 
     // Parse transaction details
-    const transactionDetails = typeof borrowing.service_details === 'string' 
-        ? JSON.parse(borrowing.service_details) 
+    const transactionDetails = typeof borrowing.service_details === 'string'
+        ? JSON.parse(borrowing.service_details)
         : borrowing.service_details;
 
     // Parse transaction details if needed
     const txDetails = borrowing.transaction_details || transactionDetails || {};
 
     return (
-        <AdminLayout 
-            user={auth.user} 
+        <AdminLayout
+            user={auth.user}
             header={
                 <div className="flex items-center space-x-4">
-                    <Link 
-                        href={route("admin.borrowings.index")} 
+                    <Link
+                        href={route("admin.borrowings.index")}
                         className="p-2 bg-white rounded-xl border border-gray-200 shadow-sm text-gray-600 hover:text-blue-600 transition-all active:scale-95"
                     >
                         <ArrowLeftIcon className="h-5 w-5" />
@@ -256,11 +257,10 @@ export default function Show({ auth, borrowing }) {
                                                     {new Date(repayment.created_at).toLocaleDateString()}
                                                 </p>
                                             </div>
-                                            <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                                                repayment.status === 'completed' ? 'bg-green-100 text-green-700' :
-                                                repayment.status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
-                                                'bg-gray-100 text-gray-700'
-                                            }`}>
+                                            <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${repayment.status === 'completed' ? 'bg-green-100 text-green-700' :
+                                                    repayment.status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
+                                                        'bg-gray-100 text-gray-700'
+                                                }`}>
                                                 {repayment.status}
                                             </span>
                                         </div>
@@ -299,12 +299,39 @@ export default function Show({ auth, borrowing }) {
                             </button>
                         </div>
                     )}
-
+                    {borrowing.status === 'overdue' && (
+                        <div className="flex flex-col sm:flex-row gap-4 pt-4">
+                            <button
+                                onClick={handleProcessPayment}
+                                disabled={processing}
+                                className="flex-1 py-4 bg-red-600 text-white rounded-[1.5rem] font-black text-xs tracking-[0.2em] hover:bg-red-700 transition-all active:scale-[0.98] flex items-center justify-center shadow-xl shadow-red-100 disabled:opacity-50"
+                            >
+                                <BanknotesIcon className="h-5 w-5 mr-2" />
+                                PAY NOW FROM CARD
+                            </button>
+                            <button
+                                onClick={handleTriggerRepayment}
+                                disabled={processing}
+                                className="flex-1 py-4 bg-blue-600 text-white rounded-[1.5rem] font-black text-xs tracking-[0.2em] hover:bg-blue-700 transition-all active:scale-[0.98] flex items-center justify-center shadow-xl shadow-blue-100 disabled:opacity-50"
+                            >
+                                <ArrowPathIcon className="h-5 w-5 mr-2" />
+                                TRIGGER REPAYMENT
+                            </button>
+                            <button
+                                onClick={handleMarkAsPaid}
+                                disabled={processing}
+                                className="flex-1 py-4 bg-green-600 text-white rounded-[1.5rem] font-black text-xs tracking-[0.2em] hover:bg-green-700 transition-all active:scale-[0.98] flex items-center justify-center shadow-xl shadow-green-100 disabled:opacity-50"
+                            >
+                                <CheckIcon className="h-5 w-5 mr-2" />
+                                MARK AS PAID
+                            </button>
+                        </div>
+                    )}
                     {borrowing.status === 'paid' && (
                         <div className="bg-green-50 rounded-3xl p-6 border border-green-100 text-center">
                             <CheckCircleIcon className="h-10 w-10 text-green-600 mx-auto mb-2" />
                             <p className="text-xs font-bold text-green-700 uppercase tracking-widest leading-relaxed">
-                                This borrowing has been fully cleared.<br/>
+                                This borrowing has been fully cleared.<br />
                                 <span className="text-[10px] text-green-500 opacity-70">
                                     {borrowing.repaid_at ? `Cleared on ${new Date(borrowing.repaid_at).toLocaleDateString()}` : 'Status: Paid'}
                                 </span>
@@ -316,7 +343,7 @@ export default function Show({ auth, borrowing }) {
                         <div className="bg-red-50 rounded-3xl p-6 border border-red-100 text-center">
                             <ExclamationTriangleIcon className="h-10 w-10 text-red-600 mx-auto mb-2" />
                             <p className="text-xs font-bold text-red-700 uppercase tracking-widest leading-relaxed">
-                                This borrowing is overdue.<br/>
+                                This borrowing is overdue.<br />
                                 <span className="text-[10px] text-red-500 opacity-70">Due since {new Date(borrowing.due_date).toLocaleDateString()}</span>
                             </p>
                         </div>

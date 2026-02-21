@@ -198,6 +198,9 @@ class CableController extends AtomicController
                 $transaction->status = 'successful';
                 $transaction->meta_data = array_merge($transaction->meta_data ?? [], [
                     'api_response' => $response['data'] ?? [],
+                    'api_transaction_id' => $response['api_transaction_id']
+                        ?? ($response['data']['id'] ?? ($response['data']['ident'] ?? null)),
+                    'api_status' => $response['api_status'] ?? null,
                     'completed_at' => now(),
                 ]);
                 $transaction->save();

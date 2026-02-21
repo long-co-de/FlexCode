@@ -10,7 +10,7 @@ use App\Models\DataPlan;
 use App\Models\Transaction;
 use App\Models\Beneficiary;
 use App\Services\BorrowingEligibilityService;
-use App\Services\HusmodataService;
+use App\Services\DatavendroService;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Auth;
@@ -25,12 +25,12 @@ class DataController extends AtomicController
     use ProProfitCalculator;
 
     protected $eligibilityService;
-    protected $husmodataService;
+    protected $datavendroService;
 
-    public function __construct(BorrowingEligibilityService $eligibilityService, HusmodataService $husmodataService)
+    public function __construct(BorrowingEligibilityService $eligibilityService, DatavendroService $datavendroService)
     {
         $this->eligibilityService = $eligibilityService;
-        $this->husmodataService = $husmodataService;
+        $this->datavendroService = $datavendroService;
     }
 
     /**
@@ -41,10 +41,10 @@ class DataController extends AtomicController
     public function index()
     {
         $user = auth()->user();
-        
+
         $eligibility = $this->eligibilityService->checkEligibility($user, 'data');
         $hasActiveCard = $user->cards()->where('is_active', true)->exists();
-        
+
         $networks = Network::where('is_active', true)->with('dataplans')->get();
 
         $beneficiaries = Beneficiary::where('user_id', $user->id)
@@ -140,7 +140,7 @@ class DataController extends AtomicController
 
         try {
             $result = $this->processAtomicTransaction($user->id, $dataPlan->selling_price, function ($lockedUser) use ($request, $network, $dataPlan, $requestId) {
-                
+
                 if (!$dataPlan->dataplan_id) {
                     throw new \Exception('This data plan is currently unavailable. Please try another one.');
                 }
@@ -182,7 +182,7 @@ class DataController extends AtomicController
 
             $transaction = $result;
 
-            $response = $this->husmodataService->buyData(
+            $response = $this->datavendroService->buyData(
                 $request->phone_number,
                 $network->code,
                 $dataPlan->dataplan_id,
@@ -192,7 +192,10 @@ class DataController extends AtomicController
 
             if ($response['success']) {
                 $metaData = $transaction->meta_data;
-                $metaData['api_id'] = $response['data']['id'] ?? ($response['data']['Status'] ?? null);
+                $metaData['api_transaction_id'] = $response['api_transaction_id']
+                    ?? ($response['data']['id'] ?? ($response['data']['ident'] ?? null));
+                $metaData['api_id'] = $metaData['api_transaction_id'] ?? ($response['data']['Status'] ?? null);
+                $metaData['api_status'] = $response['api_status'] ?? null;
                 $metaData['response'] = $response['data'];
                 $metaData['completed_at'] = now();
                 $transaction->meta_data = $metaData;

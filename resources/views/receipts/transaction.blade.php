@@ -237,28 +237,35 @@ use App\Models\Setting;
             @endif
 
             @if($transaction->type === 'electricity' && isset($transaction->meta_data))
-                @if(isset($transaction->meta_data['customer_name']))
+                @php
+                    $meta = $transaction->meta_data;
+                    $token = $meta['token'] ?? ($meta['datavendro']['token'] ?? ($meta['datavendro']['Token'] ?? ($meta['datavendro']['POWERTOKEN'] ?? ($meta['datavendro']['data']['token'] ?? null))));
+                    $units = $meta['units'] ?? ($meta['datavendro']['units'] ?? ($meta['datavendro']['Units'] ?? ($meta['datavendro']['data']['units'] ?? null)));
+                    $customerName = $meta['customer_name'] ?? ($meta['datavendro']['customer_name'] ?? ($meta['datavendro']['data']['customer_name'] ?? null));
+                @endphp
+
+                @if($customerName)
                 <div class="row">
                     <span class="label">Customer</span>
-                    <span class="value">{{ $transaction->meta_data['customer_name'] }}</span>
+                    <span class="value">{{ $customerName }}</span>
                 </div>
                 @endif
-                @if(isset($transaction->meta_data['meter_type']))
+                @if(isset($meta['meter_type']))
                 <div class="row">
                     <span class="label">Meter Type</span>
-                    <span class="value">{{ ucfirst($transaction->meta_data['meter_type']) }}</span>
+                    <span class="value">{{ ucfirst($meta['meter_type']) }}</span>
                 </div>
                 @endif
-                @if(isset($transaction->meta_data['token']) && $transaction->meta_data['token'])
+                @if($token)
                 <div class="row" style="background: #f0fdf4; border-radius: 4px; margin-top: 5px;">
                     <span class="label" style="color: #15803d; font-weight: bold;">TOKEN</span>
-                    <span class="value" style="color: #15803d; font-weight: bold; font-size: 14px;">{{ $transaction->meta_data['token'] }}</span>
+                    <span class="value" style="color: #15803d; font-weight: bold; font-size: 14px;">{{ $token }}</span>
                 </div>
                 @endif
-                @if(isset($transaction->meta_data['units']))
+                @if($units)
                 <div class="row">
                     <span class="label">Units</span>
-                    <span class="value">{{ $transaction->meta_data['units'] }}</span>
+                    <span class="value">{{ $units }}</span>
                 </div>
                 @endif
             @endif

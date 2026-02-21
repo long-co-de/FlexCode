@@ -7,8 +7,8 @@ import TextInput from '@/Components/TextInput';
 import Button from '@/Components/Button';
 import SelectInput from '@/Components/SelectInput';
 import Modal from '@/Components/Modal';
-import { 
-    FaWallet, FaExchangeAlt, FaMoneyBillWave, FaTicketAlt, 
+import {
+    FaWallet, FaExchangeAlt, FaMoneyBillWave, FaTicketAlt,
     FaArrowRight, FaArrowDown, FaArrowUp, FaCopy, FaTimes,
     FaUniversity, FaHistory, FaPlus, FaCreditCard, FaShieldAlt,
     FaCheckCircle, FaExclamationCircle, FaInfoCircle, FaSearch,
@@ -150,7 +150,7 @@ export default function Wallet({ auth, paymentMethods, recentTransactions, walle
 
         const amountValue = parseFloat(amount);
         let charge = 0;
-        
+
         if (method.code === 'bank_transfer' || method.code === 'virtual_account') {
             chargePercentage = 1.5;
             charge = (amountValue * chargePercentage) / 100;
@@ -161,7 +161,7 @@ export default function Wallet({ auth, paymentMethods, recentTransactions, walle
                 charge += 100;
             }
         }
-        
+
         const finalAmount = amountValue - charge;
 
         setCalculatedCharges({ amount: amountValue, charge, chargePercentage, finalAmount });
@@ -236,17 +236,17 @@ export default function Wallet({ auth, paymentMethods, recentTransactions, walle
     },[]);
 
     const stats = [
-        { 
-            label: 'Total Funded', 
-            value: `₦${walletStats.total_funded.toLocaleString()}`, 
-            icon: <FaPlus />, 
+        {
+            label: 'Total Funded',
+            value: `₦${walletStats.total_funded.toLocaleString()}`,
+            icon: <FaPlus />,
             color: 'bg-emerald-500',
             bg: 'bg-emerald-50'
         },
-        { 
-            label: 'Total Spent', 
-            value: `₦${walletStats.total_spent.toLocaleString()}`, 
-            icon: <FaMoneyBillWave />, 
+        {
+            label: 'Total Spent',
+            value: `₦${walletStats.total_spent.toLocaleString()}`,
+            icon: <FaMoneyBillWave />,
             color: 'bg-rose-500',
             bg: 'bg-rose-50'
         },
@@ -297,9 +297,9 @@ export default function Wallet({ auth, paymentMethods, recentTransactions, walle
                                             <FaWallet className="text-xl sm:text-2xl text-sky-400" />
                                         </div>
                                     </div>
-                                    
+
                                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mt-8 sm:mt-10">
-                                        <button 
+                                        {/* <button
                                             onClick={() => openDrawer('fund')}
                                             className="flex flex-col items-center gap-2 sm:gap-3 p-3 sm:p-4 rounded-2xl sm:rounded-3xl bg-white/10 hover:bg-white/20 transition-all border border-white/10 group"
                                         >
@@ -307,9 +307,9 @@ export default function Wallet({ auth, paymentMethods, recentTransactions, walle
                                                 <FaPlus className="text-[10px] sm:text-sm text-white" />
                                             </div>
                                             <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider">Fund</span>
-                                        </button>
-                                        
-                                        {/* <Link 
+                                        </button> */}
+
+                                        {/* <Link
                                             href={route('wallet.transfer.show')}
                                             className="flex flex-col items-center gap-2 sm:gap-3 p-3 sm:p-4 rounded-2xl sm:rounded-3xl bg-white/10 hover:bg-white/20 transition-all border border-white/10 group"
                                         >
@@ -319,7 +319,7 @@ export default function Wallet({ auth, paymentMethods, recentTransactions, walle
                                             <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider">Transfer</span>
                                         </Link> */}
 
-                                        {/* <button 
+                                        {/* <button
                                             className="flex flex-col items-center gap-2 sm:gap-3 p-3 sm:p-4 rounded-2xl sm:rounded-3xl bg-white/10 hover:bg-white/20 transition-all border border-white/10 group opacity-50 cursor-not-allowed"
                                         >
                                             <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-purple-500 flex items-center justify-center">
@@ -328,7 +328,7 @@ export default function Wallet({ auth, paymentMethods, recentTransactions, walle
                                             <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider">Withdraw</span>
                                         </button> */}
 
-                                        <button 
+                                        <button
                                             onClick={() => openDrawer('coupon')}
                                             className="flex flex-col items-center gap-2 sm:gap-3 p-3 sm:p-4 rounded-2xl sm:rounded-3xl bg-white/10 hover:bg-white/20 transition-all border border-white/10 group"
                                         >
@@ -404,7 +404,7 @@ export default function Wallet({ auth, paymentMethods, recentTransactions, walle
                                                             <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-0.5">{account.bank_name}</p>
                                                             <div className="flex items-center gap-2">
                                                                 <p className="text-lg sm:text-xl font-black text-slate-900">{account.account_number}</p>
-                                                                <button 
+                                                                <button
                                                                     onClick={() => copyToClipboard(account.account_number)}
                                                                     className="p-1.5 text-slate-300 hover:text-sky-500 transition-colors"
                                                                 >
@@ -427,7 +427,7 @@ export default function Wallet({ auth, paymentMethods, recentTransactions, walle
                                                 <FaUniversity className="text-2xl" />
                                             </div>
                                             <p className="text-sm font-bold text-slate-400">No virtual accounts available.</p>
-                                            <button 
+                                            <button
                                                 onClick={() => createVirtualAccount('paystack')}
                                                 className="mt-4 px-6 py-2 bg-slate-900 text-white text-xs font-black rounded-xl uppercase tracking-widest hover:bg-slate-800 transition-all"
                                             >
@@ -523,8 +523,8 @@ export default function Wallet({ auth, paymentMethods, recentTransactions, walle
                                         type="button"
                                         onClick={() => setFundData('payment_method_id', method.id)}
                                         className={`flex items-center gap-4 p-4 rounded-2xl border-2 transition-all text-left ${
-                                            fundData.payment_method_id == method.id 
-                                            ? 'border-sky-500 bg-sky-50 shadow-sm' 
+                                            fundData.payment_method_id == method.id
+                                            ? 'border-sky-500 bg-sky-50 shadow-sm'
                                             : 'border-slate-50 bg-slate-50 hover:border-slate-200'
                                         }`}
                                     >

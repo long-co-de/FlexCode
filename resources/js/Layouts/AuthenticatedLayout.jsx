@@ -149,10 +149,10 @@ export default function Authenticated({ user, header, children }) {
                             {/* User menu */}
                             <div className="relative">
                                 <div className="flex items-center">
-                                    <span className="hidden md:inline-block mr-2 text-sm font-medium igg-700">
+                                    <span className="hidden md:inline-block mr-2 text-sm font-medium igg-700 p-2">
                                         {auth.user.name}
                                     </span>
-                                    <div className="h-8 w-8 rounded-full bg-primary-100 flex items-center justify-center text-primary-700 font-medium text-sm">
+                                    <div className="h-8 p-3 bg-base-200 hidden w-8 rounded-full bg-primary-100  items-center justify-center text-primary-700 font-medium text-sm">
                                         {auth.user.name.charAt(0).toUpperCase()}
                                     </div>
                                     <i

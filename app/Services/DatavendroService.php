@@ -14,6 +14,48 @@ class DatavendroService
     protected $apiKey;
     protected $apiUrl;
 
+    private function extractStatus(array $responseData): ?string
+    {
+        $status = $responseData['Status'] ?? $responseData['status'] ?? null;
+        if (is_string($status)) {
+            return $status;
+        }
+
+        $innerData = $responseData['data'] ?? [];
+        $status = $innerData['Status'] ?? $innerData['status'] ?? null;
+
+        return is_string($status) ? $status : null;
+    }
+
+    private function isSuccessfulStatus(?string $status): bool
+    {
+        if ($status === null) {
+            return false;
+        }
+
+        $status = strtolower($status);
+
+        return $status === 'success' || $status === 'successful';
+    }
+
+    private function extractApiTransactionId(array $responseData): ?string
+    {
+        $innerData = $responseData['data'] ?? [];
+        $id = $responseData['id']
+            ?? $responseData['ident']
+            ?? $responseData['transaction_id']
+            ?? $innerData['id']
+            ?? $innerData['ident']
+            ?? $innerData['transaction_id']
+            ?? null;
+
+        if ($id === null || $id === '') {
+            return null;
+        }
+
+        return (string) $id;
+    }
+
     public function __construct()
     {
         $this->apiKey = Setting::where('key', 'datavendro_api_key')->value('value') ?? '8b0db02d232377ca7c7dd354e30b41a423f7201d';
@@ -94,7 +136,7 @@ class DatavendroService
         if (is_numeric($discoName)) {
             return (int)$discoName;
         }
-        
+
         $disco = strtolower($discoName);
         // Mapping disco names to their IDs as per Datavendro API
         $discoMap = [
@@ -153,12 +195,14 @@ class DatavendroService
 
             if ($response->successful()) {
                 $responseData = $response->json();
-                $isSuccess = isset($responseData['Status']) &&
-                    (strtolower($responseData['Status']) === 'success' || strtolower($responseData['Status']) === 'successful');
+                $status = $this->extractStatus($responseData);
+                $isSuccess = $this->isSuccessfulStatus($status);
 
                 return [
                     'success' => $isSuccess,
                     'data' => $responseData,
+                    'api_transaction_id' => $this->extractApiTransactionId($responseData),
+                    'api_status' => $status,
                     'message' => $responseData['api_response'] ?? ($isSuccess ? 'Airtime purchase successful' : 'Airtime purchase failed'),
                 ];
             }
@@ -192,12 +236,14 @@ class DatavendroService
 
             if ($response->successful()) {
                 $responseData = $response->json();
-                $isSuccess = isset($responseData['Status']) &&
-                    (strtolower($responseData['Status']) === 'success' || strtolower($responseData['Status']) === 'successful');
+                $status = $this->extractStatus($responseData);
+                $isSuccess = $this->isSuccessfulStatus($status);
 
                 return [
                     'success' => $isSuccess,
                     'data' => $responseData,
+                    'api_transaction_id' => $this->extractApiTransactionId($responseData),
+                    'api_status' => $status,
                     'message' => $responseData['api_response'] ?? ($isSuccess ? 'Data purchase successful' : 'Data purchase failed'),
                 ];
             }
@@ -260,12 +306,14 @@ class DatavendroService
 
             if ($response->successful()) {
                 $responseData = $response->json();
-                $isSuccess = isset($responseData['Status']) &&
-                    (strtolower($responseData['Status']) === 'success' || strtolower($responseData['Status']) === 'successful');
+                $status = $this->extractStatus($responseData);
+                $isSuccess = $this->isSuccessfulStatus($status);
 
                 return [
                     'success' => $isSuccess,
                     'data' => $responseData,
+                    'api_transaction_id' => $this->extractApiTransactionId($responseData),
+                    'api_status' => $status,
                     'message' => $responseData['api_response'] ?? ($isSuccess ? 'Cable subscription successful' : 'Cable subscription failed'),
                 ];
             }
@@ -283,19 +331,61 @@ class DatavendroService
         }
     }
 
+    public function getDiscoFullName($discoName)
+    {
+        $disco = strtolower($discoName);
+        $map = [
+            'ikeja-electric' => 'Ikeja Electric',
+            'eko-electric' => 'Eko Electric',
+            'abuja-electric' => 'Abuja Electric',
+            'kano-electric' => 'Kano Electric',
+            'enugu-electric' => 'Enugu Electric',
+            'port-harcourt-electric' => 'Port Harcourt Electric',
+            'ibadan-electric' => 'Ibadan Electric',
+            'kaduna-electric' => 'Kaduna Electric',
+            'jos-electric' => 'Jos Electric',
+            'benin-electric' => 'Benin Electric',
+            'yola-electric' => 'Yola Electric',
+            'ikedc' => 'Ikeja Electric',
+            'ekedc' => 'Eko Electric',
+            'aedc' => 'Abuja Electric',
+            'kedc' => 'Kano Electric',
+            'eedc' => 'Enugu Electric',
+            'phedc' => 'Port Harcourt Electric',
+            'ibedc' => 'Ibadan Electric',
+            'kadc' => 'Kaduna Electric',
+            'jedc' => 'Jos Electric',
+            'bedc' => 'Benin Electric',
+            'yedc' => 'Yola Electric',
+        ];
+
+        return $map[$disco] ?? ucwords(str_replace('-', ' ', $disco));
+    }
+
     public function validateMeter($meterNumber, $discoName, $meterType)
     {
         try {
-            // Mapping meterType to ID (PREPAID:1, POSTAID:2)
-            $meterTypeId = (strtolower($meterType) === 'prepaid') ? 1 : 2;
+            $fullName = $this->getDiscoFullName($discoName);
+            $meterTypeValue = (strtolower($meterType) === 'prepaid') ? 'PREPAID' : 'POSTPAID';
 
             $params = [
                 'meternumber' => $meterNumber,
-                'disconame' => $discoName, // Datavendro requires full disco name
-                'mtype' => $meterTypeId == 1 ? 'prepaid':   'postpaid'
+                'disconame' => $fullName,
+                'mtype' => $meterTypeValue
             ];
+
             Log::info('Datavendro validateMeter Request', $params);
-            $response = $this->request()->get($this->apiUrl . '/validatemeter', $params);
+
+            // Try both API and AJAX endpoints if one fails, or just use the one provided by dev
+            $url = str_replace('/api', '/ajax/validate_meter_number', $this->apiUrl);
+
+            $response = $this->request()->get($url, $params);
+
+            if (!$response->successful()) {
+                // Fallback to standard API if AJAX fails
+                $response = $this->request()->get($this->apiUrl . '/validatemeter', $params);
+            }
+
             Log::info('Datavendro validateMeter Response', ['status' => $response->status(), 'data' => $response->json()]);
 
             if ($response->successful()) {
@@ -318,7 +408,7 @@ class DatavendroService
         }
     }
 
-    public function payElectricityBill($meterNumber, $discoName, $amount, $meterType, $reference = null, $phone = null)
+    public function payElectricityBill($meterNumber, $discoName, $amount, $meterType, $reference = null, $phone = null, $customerName = null, $customerAddress = null)
     {
         try {
             $meterTypeValue = (strtolower($meterType) === 'prepaid') ? "Prepaid" : "Postpaid";
@@ -326,23 +416,22 @@ class DatavendroService
 
             $payload = [
                 'disco_name' => (string)$discoId,
-                'disconame' => (is_string($discoName) && !is_numeric($discoName)) ? $discoName : null,
                 'amount' => $amount,
                 'meter_number' => $meterNumber,
-                'meternumber' => $meterNumber,
                 'MeterType' => $meterTypeValue,
+                'Customer_Phone' => $phone,
+                'customer_name' => $customerName,
+                'customer_address' => $customerAddress,
             ];
+
             if (!empty($reference)) {
                 $payload['request_id'] = $reference;
-                $payload['reference'] = $reference;
             }
-            if (!empty($phone)) {
-                $payload['phone'] = $phone;
-                $payload['phone_number'] = $phone;
-            }
+
             $payload = array_filter($payload, static function ($value) {
                 return $value !== null && $value !== '';
             });
+
             Log::info('Datavendro payElectricityBill Request', $payload);
             $response = $this->request()->post($this->apiUrl . '/billpayment/', $payload);
             Log::info('Datavendro payElectricityBill Response', ['status' => $response->status(), 'data' => $response->json()]);
@@ -357,19 +446,36 @@ class DatavendroService
 
             if ($response->successful()) {
                 $responseData = $response->json();
-                $isSuccess = isset($responseData['Status']) &&
-                    (strtolower($responseData['Status']) === 'success' || strtolower($responseData['Status']) === 'successful');
+                $status = $this->extractStatus($responseData);
+                $isSuccess = $this->isSuccessfulStatus($status);
 
                 // Extract data if it exists in the nested 'data' field
                 $innerData = $responseData['data'] ?? [];
-                $token = $innerData['token'] ?? ($innerData['Token'] ?? ($innerData['POWERTOKEN'] ?? ($innerData['main_token'] ?? null)));
-                $units = $innerData['units'] ?? ($innerData['Units'] ?? ($innerData['quantity'] ?? null));
+
+                // Try to find token in top level or nested data
+                $token = $responseData['token'] ??
+                         ($responseData['Token'] ??
+                         ($responseData['POWERTOKEN'] ??
+                         ($innerData['token'] ??
+                         ($innerData['Token'] ??
+                         ($innerData['POWERTOKEN'] ??
+                         ($innerData['main_token'] ?? null))))));
+
+                // Try to find units in top level or nested data
+                $units = $responseData['units'] ??
+                         ($responseData['Units'] ??
+                         ($responseData['quantity'] ??
+                         ($innerData['units'] ??
+                         ($innerData['Units'] ??
+                         ($innerData['quantity'] ?? null)))));
 
                 return [
                     'success' => $isSuccess,
                     'data' => $responseData,
                     'token' => $token,
                     'units' => $units,
+                    'api_transaction_id' => $this->extractApiTransactionId($responseData),
+                    'api_status' => $status,
                     'message' => $responseData['api_response'] ?? ($isSuccess ? 'Electricity bill payment successful' : 'Electricity bill payment failed'),
                 ];
             }
@@ -431,7 +537,31 @@ class DatavendroService
             foreach ($plans as $planData) {
                 if (!isset($planData['dataplan_id'])) continue;
 
+                $planName = $planData['plan'] ?? '';
+                $planType = $planData['plan_type'] ?? 'UNKNOWN';
+
+                // Skip CORPORATE GIFTING and SMS plans as they are not working or not needed
+                if (
+                    stripos($planType, 'CORPORATE GIFTING') !== false ||
+                    stripos($planName, 'CORPORATE GIFTING') !== false ||
+                    stripos($planType, 'SME') !== false ||
+                    stripos($planName, 'SME') !== false
+                ) {
+                    continue;
+                }
+
                 $costPrice = floatval($planData['plan_amount']);
+
+                // Skip plans with abnormally high prices (sanity check)
+                if ($costPrice > 50000) {
+                    Log::warning("Skipping plan with abnormal price", [
+                        'plan_id' => $planData['dataplan_id'],
+                        'name' => $planName,
+                        'price' => $costPrice
+                    ]);
+                    continue;
+                }
+
                 $sellingPrice = $this->calculateSellingPrice($costPrice, 'data');
 
                 DataPlan::updateOrCreate(
@@ -454,11 +584,11 @@ class DatavendroService
         }
     }
 
-    public function verifyTransaction($id)
+    public function verifyTransaction($id,$url = 'topup')
     {
         try {
             Log::info('Datavendro verifyTransaction Request', ['id' => $id]);
-            $response = $this->request()->get($this->apiUrl . '/topup/' . $id);
+            $response = $this->request()->get($this->apiUrl . '/' . $url . '/' . $id);
             Log::info('Datavendro verifyTransaction Response', ['status' => $response->status(), 'data' => $response->json()]);
 
             if ($response->successful()) {
@@ -478,6 +608,34 @@ class DatavendroService
                 'success' => false,
                 'message' => 'An error occurred: ' . $e->getMessage(),
             ];
+        }
+    }
+
+    public function syncProviders()
+    {
+        $providers = [
+            ['name' => 'Ikeja Electric', 'code' => 'ikeja-electric', 'logo' => 'electricity/ikeja.png'],
+            ['name' => 'Eko Electric', 'code' => 'eko-electric', 'logo' => 'electricity/eko.png'],
+            ['name' => 'Abuja Electric', 'code' => 'abuja-electric', 'logo' => 'electricity/abuja.png'],
+            ['name' => 'Kano Electric', 'code' => 'kano-electric', 'logo' => 'electricity/kano.png'],
+            ['name' => 'Enugu Electric', 'code' => 'enugu-electric', 'logo' => 'electricity/enugu.png'],
+            ['name' => 'Port Harcourt Electric', 'code' => 'port-harcourt-electric', 'logo' => 'electricity/phed.png'],
+            ['name' => 'Ibadan Electric', 'code' => 'ibadan-electric', 'logo' => 'electricity/ibadan.png'],
+            ['name' => 'Kaduna Electric', 'code' => 'kaduna-electric', 'logo' => 'electricity/kaduna.png'],
+            ['name' => 'Jos Electric', 'code' => 'jos-electric', 'logo' => 'electricity/jos.png'],
+            ['name' => 'Benin Electric', 'code' => 'benin-electric', 'logo' => 'electricity/benin.png'],
+            ['name' => 'Yola Electric', 'code' => 'yola-electric', 'logo' => 'electricity/yola.png'],
+        ];
+
+        foreach ($providers as $provider) {
+            \App\Models\ElectricityProvider::updateOrCreate(
+                ['code' => $provider['code']],
+                [
+                    'name' => $provider['name'],
+                    'logo' => $provider['logo'],
+                    'is_active' => true,
+                ]
+            );
         }
     }
 

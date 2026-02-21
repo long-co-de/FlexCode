@@ -368,37 +368,63 @@ export default function Data({ auth, networks, beneficiaries, flash, eligibility
 
                                 <div className="grid sm:grid-cols-2 gap-4">
                                     {filteredPlans.length > 0 ? (
-                                        filteredPlans.map((plan) => (
-                                            <button
-                                                key={plan.id}
-                                                onClick={() => handlePlanSelect(plan)}
-                                                className={`group w-full text-left p-5 sm:p-6 rounded-3xl sm:rounded-[2rem] border-2 transition-all duration-300 relative overflow-hidden ${selectedPlan?.id === plan.id ? 'border-sky-500 dark:border-sky-400 bg-white dark:bg-slate-800 shadow-xl ring-4 ring-sky-50 dark:ring-sky-900/20' : 'border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-slate-200 dark:hover:border-slate-600 hover:shadow-md'}`}
-                                            >
-                                                <div className="flex justify-between items-start mb-4 gap-4">
-                                                    <div className="min-w-0">
-                                                        <h4 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-slate-100 group-hover:text-sky-600 dark:group-hover:text-sky-400 transition-colors truncate">
-                                                            {plan.data_amount}
-                                                        </h4>
-                                                        <div className="flex items-center flex-wrap gap-2 mt-1">
-                                                            <div className="flex items-center gap-1 text-slate-400 dark:text-slate-500">
-                                                                <ClockIcon className="w-3.5 h-3.5" />
-                                                                <span className="text-[10px] font-bold uppercase tracking-tighter">{plan.validity}</span>
+                                        filteredPlans.map((plan) => {
+                                            const isOutOfOrder = 
+                                                plan.plan_type?.toUpperCase() === 'SME' || 
+                                                plan.plan_type?.toUpperCase() === 'CORPORATE GIFTING' ||
+                                                plan.data_amount?.toUpperCase().includes('CORPORATE GIFTING') ||
+                                                plan.data_amount?.toUpperCase().includes('SME');
+
+                                            return (
+                                                <button
+                                                    key={plan.id}
+                                                    onClick={() => !isOutOfOrder && handlePlanSelect(plan)}
+                                                    disabled={isOutOfOrder}
+                                                    className={`group w-full text-left p-5 sm:p-6 rounded-3xl sm:rounded-[2rem] border-2 transition-all duration-300 relative overflow-hidden ${
+                                                        isOutOfOrder 
+                                                        ? 'opacity-60 cursor-not-allowed bg-slate-50 dark:bg-slate-900/30 border-slate-200 dark:border-slate-800'
+                                                        : selectedPlan?.id === plan.id 
+                                                            ? 'border-sky-500 dark:border-sky-400 bg-white dark:bg-slate-800 shadow-xl ring-4 ring-sky-50 dark:ring-sky-900/20' 
+                                                            : 'border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-slate-200 dark:hover:border-slate-600 hover:shadow-md'
+                                                    }`}
+                                                >
+                                                    {isOutOfOrder && (
+                                                        <div className="absolute top-3 right-3 z-10">
+                                                            <span className="bg-rose-500 text-white text-[10px] font-black px-3 py-1 rounded-full shadow-sm uppercase tracking-widest">Out of Order</span>
+                                                        </div>
+                                                    )}
+                                                    <div className="flex justify-between items-start mb-4 gap-4">
+                                                        <div className="min-w-0">
+                                                            <h4 className={`text-xl sm:text-2xl font-black transition-colors truncate ${isOutOfOrder ? 'text-slate-400 dark:text-slate-600' : 'text-slate-900 dark:text-slate-100 group-hover:text-sky-600 dark:group-hover:text-sky-400'}`}>
+                                                                {plan.data_amount}
+                                                            </h4>
+                                                            <div className="flex items-center flex-wrap gap-2 mt-1">
+                                                                <div className="flex items-center gap-1 text-slate-400 dark:text-slate-500">
+                                                                    <ClockIcon className="w-3.5 h-3.5" />
+                                                                    <span className="text-[10px] font-bold uppercase tracking-tighter">{plan.validity}</span>
+                                                                </div>
+                                                                <div className="hidden sm:block w-1 h-1 rounded-full bg-slate-200 dark:bg-slate-600" />
+                                                                <span className="text-[10px] font-bold uppercase tracking-tighter text-slate-500 dark:text-slate-400 px-1.5 py-0.5 bg-slate-50 dark:bg-slate-700 rounded">{plan.plan_type}</span>
                                                             </div>
-                                                            <div className="hidden sm:block w-1 h-1 rounded-full bg-slate-200 dark:bg-slate-600" />
-                                                            <span className="text-[10px] font-bold uppercase tracking-tighter text-slate-500 dark:text-slate-400 px-1.5 py-0.5 bg-slate-50 dark:bg-slate-700 rounded">{plan.plan_type}</span>
+                                                        </div>
+                                                        <div className="text-right leading-none flex-shrink-0">
+                                                            <p className={`text-lg sm:text-xl font-black ${isOutOfOrder ? 'text-slate-400 dark:text-slate-600' : 'text-slate-900 dark:text-slate-100'}`}>₦{plan.selling_price}</p>
+                                                            <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase mt-1">Price</p>
                                                         </div>
                                                     </div>
-                                                    <div className="text-right leading-none flex-shrink-0">
-                                                        <p className="text-lg sm:text-xl font-black text-slate-900 dark:text-slate-100">₦{plan.selling_price}</p>
-                                                        <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase mt-1">Price</p>
+                                                    <div className={`w-full py-3 rounded-xl flex items-center justify-center gap-2 font-black text-xs transition-all ${
+                                                        isOutOfOrder 
+                                                        ? 'bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-600'
+                                                        : selectedPlan?.id === plan.id 
+                                                            ? 'bg-sky-600 dark:bg-sky-500 text-white shadow-lg shadow-sky-100 dark:shadow-sky-900/30' 
+                                                            : 'bg-slate-50 dark:bg-slate-700 text-slate-600 dark:text-slate-300 group-hover:bg-slate-100 dark:group-hover:bg-slate-600'
+                                                    }`}>
+                                                        {isOutOfOrder ? 'Unavailable' : 'Purchase Plan'}
+                                                        {!isOutOfOrder && <ChevronRightIcon className="w-4 h-4" />}
                                                     </div>
-                                                </div>
-                                                <div className={`w-full py-3 rounded-xl flex items-center justify-center gap-2 font-black text-xs transition-all ${selectedPlan?.id === plan.id ? 'bg-sky-600 dark:bg-sky-500 text-white shadow-lg shadow-sky-100 dark:shadow-sky-900/30' : 'bg-slate-50 dark:bg-slate-700 text-slate-600 dark:text-slate-300 group-hover:bg-slate-100 dark:group-hover:bg-slate-600'}`}>
-                                                    Purchase Plan
-                                                    <ChevronRightIcon className="w-4 h-4" />
-                                                </div>
-                                            </button>
-                                        ))
+                                                </button>
+                                            );
+                                        })
                                     ) : (
                                         <div className="col-span-full py-16 text-center bg-slate-50 dark:bg-slate-900/50 rounded-3xl sm:rounded-[2.5rem] border-2 border-dashed border-slate-200 dark:border-slate-700">
                                             <div className="w-16 h-16 bg-white dark:bg-slate-800 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-sm">

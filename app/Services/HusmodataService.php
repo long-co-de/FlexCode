@@ -410,7 +410,7 @@ class HusmodataService
                         'message' => $responseData['api_response'] ?? 'Data purchase successful',
                     ];
                 } else {
-                    // The request was successful but the operation failed 
+                    // The request was successful but the operation failed
                     if (stringContains($responseData['error'][0] ?? '', 'balance')) {
                         return [
                             'success' => false,
@@ -430,7 +430,7 @@ class HusmodataService
             Log::error('Husmodata API Error: ' . $e->getMessage());
             return [
                 'success' => false,
-                'message' => '  Just a quick breather - please try again in a few seconds' ,
+                'message' => '  Just a quick breather - please try again in a few seconds',
             ];
         }
     }
@@ -1145,6 +1145,124 @@ class HusmodataService
             return [
                 'success' => false,
                 'message' => 'An error occurred while connecting to the service provider',
+            ];
+        }
+    }
+    public function getDiscoId($discoName)
+    {
+        if (is_numeric($discoName)) {
+            return (int)$discoName;
+        }
+
+        $disco = strtolower($discoName);
+        // Mapping disco names to their IDs as per Datavendro API
+        $discoMap = [
+            'ikedc' => 1,
+            'ikeja' => 1,
+            'ikeja-electric' => 1,
+            'ekedc' => 2,
+            'eko' => 2,
+            'eko-electric' => 2,
+            'aedc' => 3,
+            'abuja' => 3,
+            'abuja-electric' => 3,
+            'kedc' => 4,
+            'kano' => 4,
+            'kano-electric' => 4,
+            'eedc' => 5,
+            'enugu' => 5,
+            'enugu-electric' => 5,
+            'phedc' => 6,
+            'portharcourt' => 6,
+            'port-harcourt' => 6,
+            'ibedc' => 7,
+            'ibadan' => 7,
+            'ibadan-electric' => 7,
+            'kadc' => 8,
+            'kaduna' => 8,
+            'kaduna-electric' => 8,
+            'jedc' => 9,
+            'jos' => 9,
+            'jos-electric' => 9,
+            'bedc' => 10,
+            'benin' => 10,
+            'benin-electric' => 10,
+            'yedc' => 12,
+            'yola' => 12,
+            'yola-electric' => 12,
+        ];
+
+        return $discoMap[$disco] ?? 1; // Default to Ikeja Electric if not found
+    }
+
+    public function payElectricityBill($meterNumber, $discoName, $amount, $meterType, $reference = null, $phone = null)
+    {
+        try {
+            $meterTypeValue = (strtolower($meterType) === 'prepaid') ? "Prepaid" : "Postpaid";
+            $discoId = $this->getDiscoId($discoName);
+
+            $payload = [
+                'disco_name' => (string)$discoId,
+                'disconame' => (is_string($discoName) && !is_numeric($discoName)) ? $discoName : null,
+                'amount' => $amount,
+                'meter_number' => $meterNumber,
+                // 'meternumber' => $meterNumber,
+                'MeterType' => $meterTypeValue,
+            ];
+            if (!empty($reference)) {
+                $payload['request_id'] = $reference;
+                $payload['reference'] = $reference;
+            }
+            if (!empty($phone)) {
+                $payload['phone'] = $phone;
+                $payload['phone_number'] = $phone;
+            }
+            $payload = array_filter($payload, static function ($value) {
+                return $value !== null && $value !== '';
+            });
+            Log::info('Datavendro payElectricityBill Request', $payload);
+            $response = $this->request([
+                'Authorization' => 'Token ' . $this->apiKey,
+                'Content-Type' => 'application/json',
+            ])->post($this->apiUrl . '/billpayment/', $payload);
+            Log::info('Datavendro payElectricityBill Response', ['status' => $response->status(), 'data' => $response->json()]);
+            if (!$response->successful()) {
+                Log::warning('Datavendro payElectricityBill Error', [
+                    'status' => $response->status(),
+                    'body' => $response->body(),
+                    'headers' => $response->headers(),
+                    'url' => $this->apiUrl . '/billpayment/',
+                ]);
+            }
+
+            if ($response->successful()) {
+                $responseData = $response->json();
+                $isSuccess = isset($responseData['Status']) &&
+                    (strtolower($responseData['Status']) === 'success' || strtolower($responseData['Status']) === 'successful');
+
+                // Extract data if it exists in the nested 'data' field
+                $innerData = $responseData['data'] ?? [];
+                $token = $innerData['token'] ?? ($innerData['Token'] ?? ($innerData['POWERTOKEN'] ?? ($innerData['main_token'] ?? null)));
+                $units = $innerData['units'] ?? ($innerData['Units'] ?? ($innerData['quantity'] ?? null));
+
+                return [
+                    'success' => $isSuccess,
+                    'data' => $responseData,
+                    'token' => $token,
+                    'units' => $units,
+                    'message' => $responseData['api_response'] ?? ($isSuccess ? 'Electricity bill payment successful' : 'Electricity bill payment failed'),
+                ];
+            }
+
+            return [
+                'success' => false,
+                'message' => $response->json()['message'] ?? 'Failed to process bill payment',
+            ];
+        } catch (Exception $e) {
+            Log::error('Datavendro API Error: ' . $e->getMessage());
+            return [
+                'success' => false,
+                'message' => 'An error occurred: ' . $e->getMessage(),
             ];
         }
     }

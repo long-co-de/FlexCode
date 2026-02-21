@@ -168,13 +168,20 @@ class CableController extends AtomicController
                 if ($response['success']) {
                     // Update transaction status
                     $transaction->status = 'successful';
+                    $transaction->meta_data = array_merge($transaction->meta_data ?? [], [
+                        'api_response' => $response['data'] ?? null,
+                        'api_transaction_id' => $response['api_transaction_id']
+                            ?? ($response['data']['id'] ?? ($response['data']['ident'] ?? null)),
+                        'api_status' => $response['api_status'] ?? null,
+                        'completed_at' => now(),
+                    ]);
                     $transaction->save();
 
                     // Calculate and record system profit
                     $profit = $this->calculateProfitMargin($plan->selling_price, 'cable');
                     $transaction->profit = $profit;
                     $transaction->save();
-                    
+
                     $this->recordSystemProfit($transaction, $profit, 'cable');
 
                     return [
@@ -205,6 +212,7 @@ class CableController extends AtomicController
                 'message' => $e->getMessage(),
             ], 400);
         }
+    }
     protected function calculateProfitMargin($amount, $type = 'cable')
     {
         return $this->isProUser()

@@ -14,7 +14,7 @@ class SendBorrowingPaymentReminders extends Command
 
     public function handle()
     {
-        $daysBeforeDue = $this->option('days');
+        $daysBeforeDue = (int) $this->option('days');
         $this->info("🔔 Sending payment reminders for borrowings due in {$daysBeforeDue} days...");
 
         try {

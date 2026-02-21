@@ -40,6 +40,7 @@ class CheckPendingTransactions extends Command
             'failed' => 0,
             'still_pending' => 0,
             'tokens_found' => 0,
+            'skipped_missing_provider_id' => 0,
             'errors' => 0,
         ];
 
@@ -55,65 +56,52 @@ class CheckPendingTransactions extends Command
         foreach ($pendingTransactions as $transaction) {
             $this->info('Checking transaction: ' . $transaction->reference . ' (Type: ' . $transaction->type . ')');
 
-            // Get API ID from meta_data if available - check multiple possible fields
-            $apiId = $transaction->meta_data['api_transaction_id'] ??
-                    $transaction->meta_data['id'] ??
-                    $transaction->meta_data['ident'] ??
-                    $transaction->meta_data['api_id'] ??
-                    $transaction->meta_data['transaction_id'] ?? null;
+            $metaData = $transaction->meta_data ?? [];
+            $apiId = $metaData['api_transaction_id']
+                ?? $metaData['api_ident']
+                ?? $metaData['id']
+                ?? $metaData['ident']
+                ?? $metaData['api_id']
+                ?? $metaData['transaction_id']
+                ?? null;
 
-            if (!$apiId && $transaction->type !== 'data') {
-                $this->warn('No API ID found for transaction ' . $transaction->reference . ' - checking if we can use reference');
+            if (!$apiId) {
+                $this->warn('Skipping transaction ' . $transaction->reference . ' - missing provider transaction ID');
+                $stats['skipped_missing_provider_id']++;
 
-                // For some transactions, the reference might be the API ID
-                if (str_starts_with($transaction->reference, 'ELEC') || str_starts_with($transaction->reference, 'CABLE') || str_starts_with($transaction->reference, 'AIRT')) {
-                    $apiId = $transaction->reference;
-                    $this->info('Using transaction reference as API ID: ' . $apiId);
-                } else {
-                    $this->warn('Skipping transaction ' . $transaction->reference . ' - no API ID available');
-                    $stats['errors']++;
-                    continue;
-                }
+                $metaData['processing_stage'] = $metaData['processing_stage'] ?? 'awaiting_token';
+                $metaData['requery_attempts'] = (int) ($metaData['requery_attempts'] ?? 0) + 1;
+                $metaData['last_requery_at'] = now()->toISOString();
+                $metaData['last_requery_summary'] = 'Skipped requery: missing provider transaction ID.';
+                $transaction->meta_data = $metaData;
+                $transaction->save();
+                continue;
             }
 
             // Since we're only processing electricity transactions, we can simplify
             // Determine the correct endpoint based on transaction type
             $endpoint = 'billpayment'; // Default for electricity
 
-            // Initialize metadata at the beginning
-            $metaData = $transaction->meta_data ?? [];
-
-            // Store API request details before making the call
-            $metaData['requery_requests'] = $metaData['requery_requests'] ?? [];
-            $metaData['requery_requests'][] = [
-                'timestamp' => now()->toISOString(),
-                'request' => [
-                    'api_id' => $apiId,
-                    'endpoint' => $endpoint,
-                    'method' => 'GET',
-                    'url' => 'Datavendro API: ' . $endpoint . '/' . $apiId,
-                    'transaction_type' => $transaction->type,
-                    'transaction_reference' => $transaction->reference
-                ]
-            ];
+            $metaData['requery_attempts'] = (int) ($metaData['requery_attempts'] ?? 0) + 1;
+            $metaData['last_requery_at'] = now()->toISOString();
+            $metaData['last_requery_endpoint'] = $endpoint;
+            $metaData['last_requery_api_id'] = (string) $apiId;
 
             $response = $datavendroService->verifyTransaction($apiId, $endpoint);
+            $metaData['last_requery_status_code'] = $response['http_status'] ?? null;
 
             if (!$response['success']) {
                 $this->warn('Failed to verify transaction ' . $transaction->reference . ': ' . ($response['message'] ?? 'Unknown error'));
+                $metaData['last_requery_summary'] = $response['message'] ?? 'Provider verification failed';
+                $transaction->meta_data = $metaData;
+                $transaction->save();
                 $stats['errors']++;
                 continue;
             }
 
             $transactionData = $response['data'];
-
-            // Store full API response in metadata
-            $metaData['requery_responses'] = $metaData['requery_responses'] ?? [];
-            $metaData['requery_responses'][] = [
-                'timestamp' => now()->toISOString(),
-                'response' => $transactionData
-            ];
-            $metaData['last_requery_at'] = now()->toISOString();
+            $metaData['api_status'] = $response['api_status'] ?? null;
+            $metaData['api_response_received_at'] = now()->toISOString();
 
             // Check if we have a token in the response (for electricity transactions)
             $token = $transactionData['token'] ??
@@ -134,24 +122,36 @@ class CheckPendingTransactions extends Command
                 $stats['tokens_found']++;
             }
 
+            $status = $transactionData['Status']
+                ?? $transactionData['status']
+                ?? ($transactionData['data']['Status'] ?? ($transactionData['data']['status'] ?? null));
+
             // Update transaction status
-            if (isset($transactionData['Status'])) {
-                $status = strtolower($transactionData['Status']);
-
+            if (is_string($status)) {
+                $status = strtolower($status);
+                $metaData['last_requery_summary'] = 'Provider status: ' . $status;
                 if ($status === 'success' || $status === 'successful') {
-                    $transaction->status = 'successful';
-                    $metaData['completed_at'] = now()->toISOString();
-                    $this->info('Transaction ' . $transaction->reference . ' marked as successful');
-                    $stats['successful']++;
+                    if (!empty($metaData['token'])) {
+                        $transaction->status = 'successful';
+                        $metaData['completed_at'] = now()->toISOString();
+                        $metaData['processing_stage'] = 'completed';
+                        $this->info('Transaction ' . $transaction->reference . ' marked as successful');
+                        $stats['successful']++;
 
-                    // Send notification for successful transactions
-                    try {
-                        $transaction->user->notify(new \App\Notifications\PurchaseConfirmation($transaction, $transaction->type));
-                    } catch (\Exception $e) {
-                        $this->warn('Failed to send notification for transaction ' . $transaction->reference . ': ' . $e->getMessage());
+                        try {
+                            $transaction->user->notify(new \App\Notifications\PurchaseConfirmation($transaction, $transaction->type));
+                        } catch (\Exception $e) {
+                            $this->warn('Failed to send notification for transaction ' . $transaction->reference . ': ' . $e->getMessage());
+                        }
+                    } else {
+                        $transaction->status = 'pending';
+                        $metaData['processing_stage'] = 'awaiting_token';
+                        $this->info('Transaction ' . $transaction->reference . ' is successful at provider but awaiting token');
+                        $stats['still_pending']++;
                     }
                 } elseif ($status === 'failed' || $status === 'declined') {
                     $transaction->status = 'failed';
+                    $metaData['processing_stage'] = 'failed';
                     $stats['failed']++;
 
                     // Refund the user if transaction failed
@@ -162,6 +162,8 @@ class CheckPendingTransactions extends Command
                     $this->info('Transaction ' . $transaction->reference . ' marked as failed and refunded');
                 } else {
                     $this->info('Transaction ' . $transaction->reference . ' still pending');
+                    $metaData['processing_stage'] = 'awaiting_token';
+                    $metaData['last_requery_summary'] = 'Still pending at provider';
                     $stats['still_pending']++;
                 }
 
@@ -194,6 +196,7 @@ class CheckPendingTransactions extends Command
         $this->info("Failed: {$stats['failed']}");
         $this->info("Still pending: {$stats['still_pending']}");
         $this->info("Tokens found: {$stats['tokens_found']}");
+        $this->info("Skipped (missing provider ID): {$stats['skipped_missing_provider_id']}");
         $this->info("Errors: {$stats['errors']}");
         $this->info('================================');
 

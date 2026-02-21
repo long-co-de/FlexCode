@@ -56,6 +56,20 @@ class DatavendroService
         return (string) $id;
     }
 
+    private function extractApiIdent(array $responseData): ?string
+    {
+        $innerData = $responseData['data'] ?? [];
+        $ident = $responseData['ident']
+            ?? $innerData['ident']
+            ?? null;
+
+        if ($ident === null || $ident === '') {
+            return null;
+        }
+
+        return (string) $ident;
+    }
+
     public function __construct()
     {
         $this->apiKey = Setting::where('key', 'datavendro_api_key')->value('value') ?? '8b0db02d232377ca7c7dd354e30b41a423f7201d';
@@ -475,6 +489,7 @@ class DatavendroService
                     'token' => $token,
                     'units' => $units,
                     'api_transaction_id' => $this->extractApiTransactionId($responseData),
+                    'api_ident' => $this->extractApiIdent($responseData),
                     'api_status' => $status,
                     'message' => $responseData['api_response'] ?? ($isSuccess ? 'Electricity bill payment successful' : 'Electricity bill payment failed'),
                 ];
@@ -488,7 +503,7 @@ class DatavendroService
             Log::error('Datavendro API Error: ' . $e->getMessage());
             return [
                 'success' => false,
-                'message' => 'An error occurred: ' . $e->getMessage(),
+                'message' => 'Service provider is temporarily unavailable. Please try again shortly.',
             ];
         }
     }
@@ -592,21 +607,25 @@ class DatavendroService
             Log::info('Datavendro verifyTransaction Response', ['status' => $response->status(), 'data' => $response->json()]);
 
             if ($response->successful()) {
+                $responseData = $response->json();
                 return [
                     'success' => true,
-                    'data' => $response->json(),
+                    'http_status' => $response->status(),
+                    'api_status' => $this->extractStatus((array) $responseData),
+                    'data' => $responseData,
                 ];
             }
 
             return [
                 'success' => false,
+                'http_status' => $response->status(),
                 'message' => $response->json()['message'] ?? 'Failed to verify transaction',
             ];
         } catch (Exception $e) {
             Log::error('Datavendro API Error: ' . $e->getMessage());
             return [
                 'success' => false,
-                'message' => 'An error occurred: ' . $e->getMessage(),
+                'message' => 'Unable to verify transaction with provider at the moment.',
             ];
         }
     }

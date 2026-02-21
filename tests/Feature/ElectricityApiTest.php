@@ -5,9 +5,10 @@ namespace Tests\Feature;
 use App\Models\User;
 use App\Models\ElectricityProvider;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 use Illuminate\Support\Facades\Hash;
+use App\Jobs\ProcessElectricityPurchase;
 
 class ElectricityApiTest extends TestCase
 {
@@ -34,16 +35,7 @@ class ElectricityApiTest extends TestCase
 
     public function test_electricity_purchase_api_sends_correct_payload_to_vendor()
     {
-        Http::fake([
-            'https://datavendor.ng/api/billpayment/' => Http::response([
-                'Status' => 'success',
-                'api_response' => 'Transaction Successful',
-                'data' => [
-                    'token' => '1234-5678-9012-3456',
-                    'units' => '50.5'
-                ]
-            ], 200)
-        ]);
+        Queue::fake();
 
         $payload = [
             'provider_id' => $this->provider->id,
@@ -61,23 +53,12 @@ class ElectricityApiTest extends TestCase
             ->withHeaders(['X-PIN' => '1234'])
             ->postJson('/api/services/electricity/purchase', $payload);
 
-        $response->assertStatus(200)
-            ->assertJsonPath('success', true);
+        $response->assertStatus(202)
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('status', 'pending');
 
-        // Verify SystemProfit was recorded
-        $this->assertDatabaseHas('system_profits', [
-            'user_id' => $this->user->id,
-            'profit_source' => 'electricity',
-            'status' => 'recorded',
-        ]);
-
-        // Verify the vendor request
-        Http::assertSent(function ($request) {
-            return $request->url() === 'https://datavendor.ng/api/billpayment/' &&
-                   $request->method() === 'POST' &&
-                   $request->hasHeader('Authorization', 'Token 8b0db02d232377ca7c7dd354e30b41a423f7201d') &&
-                   $request['meter_number'] === '01325857801000000' &&
-                   $request['MeterType'] === 'Prepaid';
+        Queue::assertPushed(ProcessElectricityPurchase::class, function ($job) {
+            return $job->queue === 'electricity';
         });
     }
 }

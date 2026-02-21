@@ -105,13 +105,21 @@ class TransactionController extends Controller
         try {
             $datavendroService = app(\App\Services\DatavendroService::class);
 
-            // Get API ID from meta_data if available
+            // Get provider transaction ID from meta_data if available
             $apiId = $transaction->meta_data['api_transaction_id'] ??
+                    $transaction->meta_data['api_ident'] ??
                     $transaction->meta_data['id'] ??
                     $transaction->meta_data['ident'] ??
                     $transaction->meta_data['api_id'] ?? null;
 
             if (!$apiId) {
+                $metaData = $transaction->meta_data ?? [];
+                $metaData['processing_stage'] = $metaData['processing_stage'] ?? 'awaiting_token';
+                $metaData['requery_attempts'] = (int) ($metaData['requery_attempts'] ?? 0) + 1;
+                $metaData['last_requery_at'] = now()->toISOString();
+                $metaData['last_requery_summary'] = 'Skipped requery: missing provider transaction ID.';
+                $transaction->meta_data = $metaData;
+                $transaction->save();
                 return;
             }
 
@@ -123,34 +131,19 @@ class TransactionController extends Controller
                 $endpoint = 'cablesub';
             }
 
-            // Store API request details before making the call
             $metaData = $transaction->meta_data ?? [];
-            $metaData['requery_requests'] = $metaData['requery_requests'] ?? [];
-            $metaData['requery_requests'][] = [
-                'timestamp' => now()->toISOString(),
-                'request' => [
-                    'api_id' => $apiId,
-                    'endpoint' => $endpoint,
-                    'method' => 'GET',
-                    'url' => 'Datavendro API: ' . $endpoint . '/' . $apiId,
-                    'transaction_type' => $transaction->type,
-                    'transaction_reference' => $transaction->reference,
-                    'user_id' => $transaction->user_id
-                ]
-            ];
+            $metaData['requery_attempts'] = (int) ($metaData['requery_attempts'] ?? 0) + 1;
+            $metaData['last_requery_at'] = now()->toISOString();
+            $metaData['last_requery_endpoint'] = $endpoint;
+            $metaData['last_requery_api_id'] = (string) $apiId;
 
             $response = $datavendroService->verifyTransaction($apiId, $endpoint);
+            $metaData['last_requery_status_code'] = $response['http_status'] ?? null;
 
             if ($response['success']) {
                 $transactionData = $response['data'];
-
-                // Store full API response in metadata
-                $metaData['requery_responses'] = $metaData['requery_responses'] ?? [];
-                $metaData['requery_responses'][] = [
-                    'timestamp' => now()->toISOString(),
-                    'response' => $transactionData
-                ];
-                $metaData['last_requery_at'] = now()->toISOString();
+                $metaData['api_status'] = $response['api_status'] ?? null;
+                $metaData['api_response_received_at'] = now()->toISOString();
 
                 // Check if we have a token in the response
                 $token = $transactionData['token'] ??
@@ -170,30 +163,40 @@ class TransactionController extends Controller
                 }
 
                 // Update transaction status based on provider response
-                if (isset($transactionData['Status'])) {
-                    $status = strtolower($transactionData['Status']);
+                $status = $transactionData['Status']
+                    ?? $transactionData['status']
+                    ?? ($transactionData['data']['Status'] ?? ($transactionData['data']['status'] ?? null));
+                if (is_string($status)) {
+                    $status = strtolower($status);
+                    $metaData['last_requery_summary'] = 'Provider status: ' . $status;
 
                     if ($status === 'success' || $status === 'successful') {
-                        $transaction->status = 'successful';
-                        $metaData['completed_at'] = now()->toISOString();
-
-                        // Record system profit for successful transactions
-                        // Note: This would require the recordSystemProfit method to be available
-                        // Currently commented out as it's not implemented in this controller
-                        // $this->recordSystemProfit($transaction, $transaction->profit, $transaction->type);
-
-                        // Send notification
-                        $transaction->user->notify(new \App\Notifications\PurchaseConfirmation($transaction, $transaction->type));
+                        if (!empty($metaData['token'])) {
+                            $transaction->status = 'successful';
+                            $metaData['completed_at'] = now()->toISOString();
+                            $metaData['processing_stage'] = 'completed';
+                            $transaction->user->notify(new \App\Notifications\PurchaseConfirmation($transaction, $transaction->type));
+                        } else {
+                            $transaction->status = 'pending';
+                            $metaData['processing_stage'] = 'awaiting_token';
+                        }
                     } elseif ($status === 'failed' || $status === 'declined') {
                         $transaction->status = 'failed';
+                        $metaData['processing_stage'] = 'failed';
 
                         // Refund the user if transaction failed
                         $user = $transaction->user;
                         $user->wallet_balance += $transaction->amount + $transaction->fee;
                         $user->save();
+                    } else {
+                        $metaData['processing_stage'] = 'awaiting_token';
                     }
                 }
 
+                $transaction->meta_data = $metaData;
+                $transaction->save();
+            } else {
+                $metaData['last_requery_summary'] = $response['message'] ?? 'Provider verification failed';
                 $transaction->meta_data = $metaData;
                 $transaction->save();
             }

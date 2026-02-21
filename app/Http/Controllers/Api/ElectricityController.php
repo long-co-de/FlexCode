@@ -6,9 +6,11 @@ use App\Http\Controllers\AtomicController;
 use Illuminate\Http\Request;
 use App\Models\ElectricityProvider;
 use App\Models\Transaction;
+use App\Jobs\ProcessElectricityPurchase;
 use App\Services\DatavendroService;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use App\Traits\ProProfitCalculator;
 
 class ElectricityController extends AtomicController
@@ -134,9 +136,10 @@ class ElectricityController extends AtomicController
         $totalAmount = $request->amount + $serviceFee;
 
         try {
-            $result = $this->processAtomicTransaction($user->id, $totalAmount, function ($lockedUser) use ($request, $provider, $totalAmount, $serviceFee) {
+            $transaction = $this->processAtomicTransaction($user->id, $totalAmount, function ($lockedUser) use ($request, $provider, $totalAmount, $serviceFee) {
                 // Generate unique reference
                 $reference = 'ELEC' . strtoupper(Str::random(8)) . time();
+                $profit = $this->calculateProfitMargin($request->amount, 'electricity');
 
                 // Create transaction record
                 $transaction = Transaction::create([
@@ -145,6 +148,7 @@ class ElectricityController extends AtomicController
                     'type' => 'electricity',
                     'amount' => $request->amount,
                     'fee' => $serviceFee,
+                    'profit' => $profit,
                     'status' => 'pending',
                     'recipient' => $request->meter_number,
                     'description' => $provider->name . ' Electricity Bill Payment of ₦' . $request->amount . ' for ' . $request->customer_name,
@@ -161,79 +165,34 @@ class ElectricityController extends AtomicController
                         'total_amount' => $totalAmount,
                         'request_id' => $request->request_id,
                         'channel' => 'api',
+                        'processing_stage' => 'queued',
+                        'queued_at' => now()->toISOString(),
                     ],
                 ]);
 
                 // Deduct from user's wallet
                 $this->deductWallet($lockedUser, $totalAmount, 'API electricity purchase');
 
-                $response = $this->datavendroService->payElectricityBill(
-                    $request->meter_number,
-                    $provider->code,
-                    $request->amount,
-                    $request->meter_type,
-                    $reference,
-                    $request->phone_number,
-                    $request->customer_name,
-                    $request->customer_address
-                );
-
-                if ($response['success']) {
-                    $token = $response['token'] ?? null;
-                    $cleanToken = $token;
-                    if (!empty($token) && str_starts_with($token, 'Token : ')) {
-                        $cleanToken = substr($token, 8);
-                    }
-
-                    // Update transaction status and token
-                    $transaction->status = 'successful';
-                    $transaction->meta_data = array_merge($transaction->meta_data, [
-                        'token' => $cleanToken,
-                        'original_token' => $token,
-                        'units' => $response['units'] ?? null,
-                        'api_response' => $response['data'] ?? null,
-                        'api_transaction_id' => $response['api_transaction_id']
-                            ?? (($response['data']['id'] ?? ($response['data']['ident'] ?? null))),
-                        'api_status' => $response['api_status'] ?? null,
-                        'api_response_received_at' => now(),
-                    ]);
-                    $transaction->save();
-
-                    // Calculate and record system profit
-                    $profit = $this->calculateProfitMargin($request->amount, 'electricity');
-                    $transaction->profit = $profit;
-                    $transaction->save();
-                    
-                    $this->recordSystemProfit($transaction, $profit, 'electricity');
-
-                    return [
-                        'success' => true,
-                        'message' => 'Electricity bill payment successful!',
-                        'transaction' => $transaction,
-                        'token' => $cleanToken,
-                        'units' => $response['units'] ?? null,
-                    ];
-                } else {
-                    // If failed, refund the user
-                    $lockedUser->wallet_balance += $totalAmount;
-                    $lockedUser->save();
-
-                    // Update transaction status
-                    $transaction->status = 'failed';
-                    $transaction->meta_data = array_merge($transaction->meta_data ?? [], [
-                        'error' => $response['message'] ?? 'Unknown error'
-                    ]);
-                    $transaction->save();
-
-                    throw new \Exception($response['message'] ?? 'Electricity bill payment failed at provider.');
-                }
+                return $transaction;
             });
 
-            return response()->json($result);
+            ProcessElectricityPurchase::dispatch($transaction->id)->onQueue('electricity');
+
+            return response()->json([
+                'success' => true,
+                'status' => 'pending',
+                'message' => 'Electricity purchase is being processed.',
+                'transaction_id' => $transaction->id,
+                'reference' => $transaction->reference,
+            ], 202);
 
         } catch (\Exception $e) {
+            Log::error('Failed to queue API electricity purchase', [
+                'user_id' => $user->id ?? null,
+                'error' => $e->getMessage(),
+            ]);
             return response()->json([
-                'message' => $e->getMessage(),
+                'message' => 'Unable to start electricity purchase right now. Please try again.',
             ], 400);
         }
     }

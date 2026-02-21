@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Head, Link, useForm } from "@inertiajs/react";
+import { useEffect, useState } from "react";
+import { Head, Link, router, useForm } from "@inertiajs/react";
 import AppLayout from "@/Layouts/AppLayout";
 import InputError from "@/Components/InputError";
 import InputLabel from "@/Components/InputLabel";
@@ -87,6 +87,24 @@ export default function TransactionDetails({ auth, transaction }) {
         setTimeout(() => setCopySuccess(false), 2000);
     };
 
+    const isPendingElectricity =
+        transaction?.status?.toLowerCase() === "pending" &&
+        ["electricity", "borrowing_electricity"].includes(transaction?.type);
+
+    useEffect(() => {
+        if (!isPendingElectricity) return;
+
+        const intervalId = setInterval(() => {
+            router.reload({
+                only: ["transaction"],
+                preserveScroll: true,
+                preserveState: true,
+            });
+        }, 25000);
+
+        return () => clearInterval(intervalId);
+    }, [isPendingElectricity]);
+
     return (
         <AppLayout
             user={auth.user}
@@ -133,6 +151,15 @@ export default function TransactionDetails({ auth, transaction }) {
                             <p className="text-xs text-base-content/60 font-bold uppercase tracking-widest mt-4">
                                 {formatDate(transaction.created_at)}
                             </p>
+
+                            {isPendingElectricity && (
+                                <div className="mt-4 w-full rounded-2xl bg-warning/20 border border-warning/30 px-4 py-3 text-left">
+                                    <p className="text-xs font-bold uppercase tracking-widest text-warning">In Progress</p>
+                                    <p className="text-sm font-semibold text-base-content mt-1">
+                                        Your electricity purchase is processing. Your token will appear here automatically once available.
+                                    </p>
+                                </div>
+                            )}
                         </div>
 
                         {/* Details Grid */}

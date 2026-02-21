@@ -8,12 +8,12 @@ use Inertia\Inertia;
 use App\Models\ElectricityProvider;
 use App\Models\Transaction;
 use App\Models\Beneficiary;
+use App\Jobs\ProcessElectricityPurchase;
 use App\Services\DatavendroService;
 use App\Services\BorrowingEligibilityService;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\DB;
-use App\Models\User;
+use Illuminate\Support\Facades\Log;
 
 class ElectricityController extends AtomicController
 {
@@ -210,6 +210,9 @@ class ElectricityController extends AtomicController
                         'vat' => $vat,
                         'total_amount' => $totalAmount,
                         'request_id' => $requestId,
+                        'phone_number' => $lockedUser->phone_number,
+                        'processing_stage' => 'queued',
+                        'queued_at' => now()->toISOString(),
                     ],
                 ]);
 
@@ -220,79 +223,17 @@ class ElectricityController extends AtomicController
             });
 
             $transaction = $result;
+            ProcessElectricityPurchase::dispatch($transaction->id)->onQueue('electricity');
 
-            $vt = $this->datavendroService->payElectricityBill(
-                $request->meter_number,
-                $provider->code,
-                $request->amount,
-                $request->meter_type,
-                $transaction->reference,
-                $user->phone_number ?? null,
-                $request->customer_name,
-                $request->address
-            );
-
-            if ($vt['success']) {
-                // Get API response data
-                $apiData = $vt['data'] ?? [];
-                $token = $vt['token'] ?? null;
-                $units = $vt['units'] ?? null;
-                $apiTransactionId = $vt['api_transaction_id']
-                    ?? $apiData['id']
-                    ?? $apiData['ident']
-                    ?? $apiData['transaction_id']
-                    ?? null;
-
-                // Clean token by removing "Token : " prefix if present
-                $cleanToken = $token;
-                if (!empty($token) && str_starts_with($token, 'Token : ')) {
-                    $cleanToken = substr($token, 8); // Remove "Token : " prefix
-                }
-
-                // Update transaction metadata with API response
-                $transaction->meta_data = array_merge($transaction->meta_data ?? [], [
-                    'datavendro' => $apiData,
-                    'token' => $cleanToken,
-                    'original_token' => $token, // Keep original for reference
-                    'units' => $units,
-                    'api_transaction_id' => $apiTransactionId,
-                    'api_status' => $vt['api_status'] ?? null,
-                    'api_response_received_at' => now(),
-                    "id"=>$apiTransactionId,
-                ]);
-
-                // Check if we have a token
-                if (!empty($cleanToken)) {
-                    // We have token, mark as successful
-                    $transaction->status = 'successful';
-                    $transaction->meta_data['completed_at'] = now();
-                    $transaction->save();
-
-                    // Record system profit
-                    $this->recordSystemProfit($transaction, $transaction->profit, 'electricity');
-
-                    $user->notify(new \App\Notifications\PurchaseConfirmation($transaction, 'electricity'));
-
-                    $successMsg = 'Electricity bill payment successful! Token: ' . $cleanToken;
-                    return redirect()->route('transactions.show', $transaction->id)->with('success', $successMsg);
-                } else {
-                    // No token yet, keep as pending for polling
-                    $transaction->status = 'pending';
-                    $transaction->save();
-
-                    // Show processing message
-                    $infoMsg = 'Your electricity bill payment is being processed. ';
-                    $infoMsg .= 'The token will be available shortly. Please check back in a few minutes.';
-                    return redirect()->route('transactions.show', $transaction->id)->with('info', $infoMsg);
-                }
-            } else {
-                // API failed, refund the user using atomic helper
-                $this->failAndRefund($transaction, $user->id, $totalAmount, $vt);
-
-                return redirect()->back()->with('error', $vt['message'] ?? 'Electricity bill payment failed. Your money has been refunded.');
-            }
+            return redirect()
+                ->route('transactions.show', $transaction->id)
+                ->with('info', 'Your electricity purchase is in progress. Token will appear once processing is complete.');
         } catch (\Exception $e) {
-            return redirect()->back()->with('error', $e->getMessage());
+            Log::error('Failed to queue electricity purchase', [
+                'user_id' => $user->id,
+                'error' => $e->getMessage(),
+            ]);
+            return redirect()->back()->with('error', 'Unable to start electricity purchase right now. Please try again.');
         }
     }
 

@@ -6,6 +6,7 @@ import Button from '@/Components/Button';
 import TextInput from '@/Components/TextInput';
 import SelectInput from '@/Components/SelectInput';
 import { format } from 'date-fns';
+import { exportRowsToCsv, exportRowsToExcel } from '@/Utils/tableExport';
 
 export default function TransactionsIndex({ auth, transactions, filter, transactionTypes, statuses }) {
     const [searchTerm, setSearchTerm] = useState(filter.search || '');
@@ -39,6 +40,24 @@ export default function TransactionsIndex({ auth, transactions, filter, transact
             type: selectedType,
             status: e.target.value
         }));
+    };
+
+    const transactionExportRows = transactions.data.map((transaction) => ({
+        Reference: transaction.reference,
+        User: transaction.user?.name || 'N/A',
+        Type: transaction.type?.replace(/_/g, ' ') || 'N/A',
+        Recipient: transaction.recipient || 'N/A',
+        Amount: transaction.amount || 0,
+        Status: transaction.status,
+        Date: format(new Date(transaction.created_at), 'MMM dd, yyyy HH:mm'),
+    }));
+
+    const handleExportTransactionsCsv = () => {
+        exportRowsToCsv('admin-transactions.csv', transactionExportRows);
+    };
+
+    const handleExportTransactionsExcel = () => {
+        exportRowsToExcel('admin-transactions.xls', 'Transactions', transactionExportRows);
     };
 
     return (
@@ -92,6 +111,12 @@ export default function TransactionsIndex({ auth, transactions, filter, transact
                                             </option>
                                         ))}
                                     </SelectInput>
+                                    <Button type="button" onClick={handleExportTransactionsCsv}>
+                                        Export CSV
+                                    </Button>
+                                    <Button type="button" onClick={handleExportTransactionsExcel}>
+                                        Export Excel
+                                    </Button>
                                 </div>
                             </div>
 

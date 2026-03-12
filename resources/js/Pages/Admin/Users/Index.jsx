@@ -13,6 +13,7 @@ import {
 import Button from '@/Components/Button';
 import TextInput from '@/Components/TextInput';
 import Dropdown from '@/Components/Dropdown';
+import { exportRowsToCsv, exportRowsToExcel } from '@/Utils/tableExport';
 
 export default function UsersIndex({ auth, users, roles, filter }) {
     const [searchTerm, setSearchTerm] = useState(filter.search || '');
@@ -35,6 +36,24 @@ export default function UsersIndex({ auth, users, roles, filter }) {
         setSearchTerm('');
         setSelectedRole('');
         get(route('admin.users'));
+    };
+
+    const usersExportRows = users.data.map((user) => ({
+        Name: user.name,
+        Email: user.email,
+        Role: user.role,
+        Phone: user.phone_number || 'N/A',
+        Balance: user.wallet_balance || 0,
+        Referrals: user.referrals_count || 0,
+        Status: user.is_active ? 'Active' : 'Disabled',
+    }));
+
+    const handleExportUsersCsv = () => {
+        exportRowsToCsv('admin-users.csv', usersExportRows);
+    };
+
+    const handleExportUsersExcel = () => {
+        exportRowsToExcel('admin-users.xls', 'Users', usersExportRows);
     };
 
     return (
@@ -98,6 +117,15 @@ export default function UsersIndex({ auth, users, roles, filter }) {
                                         Clear Filters
                                     </button>
                                 )}
+                            </div>
+
+                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-2">
+                                <Button type="button" className="justify-center" onClick={handleExportUsersCsv}>
+                                    Export CSV
+                                </Button>
+                                <Button type="button" className="justify-center" onClick={handleExportUsersExcel}>
+                                    Export Excel
+                                </Button>
                             </div>
 
                             {/* Collapsible Filters */}

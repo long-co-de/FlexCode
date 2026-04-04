@@ -13,6 +13,7 @@ class Transaction extends Model
         'user_id',
         'reference',
         'type', // airtime, data, cable, electricity, wallet_funding
+        'is_card_link_transaction',
         'amount',
         'fee',
         'profit',
@@ -27,6 +28,7 @@ class Transaction extends Model
 
     protected $casts = [
         'meta_data' => 'array',
+        'is_card_link_transaction' => 'boolean',
         'verified_at' => 'datetime',
     ];
 

@@ -2,6 +2,12 @@ import { Link } from '@inertiajs/react';
 import { format } from 'date-fns';
 
 export default function TransactionTable({ transactions, viewRoute = 'transactions.show' }) {
+    const displayAmount = (transaction) => {
+        const shouldMaskForUser = viewRoute === 'transactions.show' && transaction.type === 'card_linking';
+        const amount = shouldMaskForUser ? 0 : Number(transaction.amount || 0);
+        return amount.toFixed(2);
+    };
+
     return (
         <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
@@ -38,7 +44,7 @@ export default function TransactionTable({ transactions, viewRoute = 'transactio
                                     <span className="capitalize">{transaction.type.replace('_', ' ')}</span>
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm -500">
-                                    ₦{transaction.amount}
+                                    NGN {displayAmount(transaction)}
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap">
                                     <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
@@ -52,8 +58,8 @@ export default function TransactionTable({ transactions, viewRoute = 'transactio
                                     {format(new Date(transaction.created_at), 'MMM dd, yyyy HH:mm')}
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                                    <Link 
-                                        href={route(viewRoute, transaction.id)} 
+                                    <Link
+                                        href={route(viewRoute, transaction.id)}
                                         className="text-primary-600 hover:text-primary-900 mr-3"
                                     >
                                         View
@@ -70,8 +76,7 @@ export default function TransactionTable({ transactions, viewRoute = 'transactio
                     )}
                 </tbody>
             </table>
-            
-            {/* Pagination */}
+
             {transactions?.links && (
                 <div className="px-4 py-3 flex items-center justify-between border-t border-gray-200 sm:px-6">
                     <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">

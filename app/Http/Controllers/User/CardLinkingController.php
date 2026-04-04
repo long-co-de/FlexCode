@@ -5,6 +5,7 @@ namespace App\Http\Controllers\User;
 use App\Http\Controllers\AtomicController;
 use App\Models\UserCard;
 use App\Models\User;
+use App\Services\CardLinkingService;
 use App\Services\PaystackService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -16,10 +17,12 @@ use Inertia\Inertia;
 class CardLinkingController extends AtomicController
 {
     protected $paystackService;
+    protected $cardLinkingService;
 
-    public function __construct(PaystackService $paystackService)
+    public function __construct(PaystackService $paystackService, CardLinkingService $cardLinkingService)
     {
         $this->paystackService = $paystackService;
+        $this->cardLinkingService = $cardLinkingService;
         // $this->middleware('auth');
     }
 
@@ -201,26 +204,10 @@ class CardLinkingController extends AtomicController
                 ]);
 
                 // Credit user ₦50 if it's their first card linked
-                if ($isFirstCard) {
-                    $this->creditWallet($lockedUser, 50, 'Card Linking Bonus');
-                    
-                    \App\Models\Transaction::create([
-                        'user_id' => $lockedUser->id,
-                        'type' => 'commission', // Using commission type for bonuses
-                        'amount' => 50,
-                        'reference' => 'CARD_LINK_BONUS_' . Str::random(8) . time(),
-                        'status' => 'successful',
-                        'description' => 'First card linking bonus credit',
-                        'meta_data' => [
-                            'reason' => 'first_card_linked',
-                            'card_id' => $card->id,
-                            'request_id' => $requestId,
-                        ],
-                    ]);
-                }
             }
 
             // Process refund of verification charge (₦100)
+            $this->recordUserCardLinkingTransaction($card, $requestId);
             $this->processVerificationRefund($lockedUser, $paymentData);
 
             // Recalculate borrowing eligibility
@@ -266,17 +253,18 @@ class CardLinkingController extends AtomicController
 
             // Only refund if the exact verification amount was charged
             if ($amount == 100) {
-                // Create refund transaction
+                // Create an admin-visible refund record while keeping the user-facing history on card linking only.
                 \App\Models\Transaction::create([
                     'user_id' => $user->id,
                     'type' => 'wallet_credit',
                     'amount' => 100,
-                    'reference' => 'REF_CARD_LINK_' . $paymentData['id'] ?? uniqid(),
+                    'reference' => 'REF_CARD_LINK_' . ($paymentData['id'] ?? uniqid()),
                     'status' => 'pending',
                     'description' => 'Card linking verification charge refund',
-                    'metadata' => [
+                    'meta_data' => [
                         'original_payment_id' => $paymentData['id'] ?? '',
                         'reason' => 'card_verification_refund',
+                        'admin_only' => true,
                     ],
                 ]);
 
@@ -290,6 +278,20 @@ class CardLinkingController extends AtomicController
             ]);
             // Don't throw - card is already linked successfully
         }
+    }
+
+    protected function recordUserCardLinkingTransaction(UserCard $card, string $requestId): void
+    {
+        $transaction = $this->cardLinkingService->recordCardLinkingTransaction($card);
+
+        if (!$transaction) {
+            return;
+        }
+
+        $metaData = $transaction->meta_data ?? [];
+        $metaData['request_id'] = $requestId;
+        $transaction->meta_data = $metaData;
+        $transaction->save();
     }
 
     /**

@@ -25,7 +25,7 @@ class TransactionController extends Controller
         $type = $request->input('type');
         $status = $request->input('status');
 
-        $query = Transaction::where('user_id', $user->id);
+        $query = $this->userVisibleTransactions($user->id);
 
         if ($search) {
             $query->where(function ($q) use ($search) {
@@ -46,12 +46,12 @@ class TransactionController extends Controller
         $transactions = $query->orderBy('created_at', 'desc')->paginate(15);
 
         // Get unique transaction types and statuses for filters
-        $transactionTypes = Transaction::where('user_id', $user->id)
+        $transactionTypes = $this->userVisibleTransactions($user->id)
             ->distinct()
             ->pluck('type')
             ->toArray();
 
-        $statuses = Transaction::where('user_id', $user->id)
+        $statuses = $this->userVisibleTransactions($user->id)
             ->distinct()
             ->pluck('status')
             ->toArray();
@@ -81,6 +81,10 @@ class TransactionController extends Controller
             abort(403, 'Unauthorized action.');
         }
 
+        if ($this->shouldHideFromUser($transaction)) {
+            abort(404);
+        }
+
         // Automatically requery pending transactions for electricity services only (focus on electricity)
         if ($transaction->status === 'pending' && in_array($transaction->type, ['electricity', 'borrowing_electricity'])) {
             $this->requeryTransactionStatus($transaction);
@@ -92,6 +96,20 @@ class TransactionController extends Controller
         return Inertia::render('User/TransactionDetails', [
             'transaction' => $transaction,
         ]);
+    }
+
+    private function userVisibleTransactions(int $userId)
+    {
+        return Transaction::where('user_id', $userId)
+            ->where(function ($query) {
+                $query->whereNull('meta_data->reason')
+                    ->orWhere('meta_data->reason', '!=', 'card_verification_refund');
+            });
+    }
+
+    private function shouldHideFromUser(Transaction $transaction): bool
+    {
+        return ($transaction->meta_data['reason'] ?? null) === 'card_verification_refund';
     }
 
     /**

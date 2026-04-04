@@ -23,18 +23,17 @@ class CardLinkingService
                     'user_id' => $card->user_id,
                     'reference' => 'CARD-LINK-' . uniqid(),
                     'type' => 'card_linking',
+                    'is_card_link_transaction' => true,
                     'amount' => 0,
                     'status' => 'successful',
-                    'description' => "Card linking - {$card->card_brand} ending in {$card->last4}",
-                    'card_id' => $card->id,
-                    'is_card_link_transaction' => true,
-                    'meta_data' => json_encode([
+                    'description' => "Card linking - {$card->card_type} ending in {$card->last_four}",
+                    'meta_data' => [
                         'card_id' => $card->id,
-                        'card_brand' => $card->card_brand,
-                        'last4' => $card->last4,
+                        'card_brand' => $card->card_type,
+                        'last4' => $card->last_four,
                         'authorization_code' => $card->authorization_code,
                         'card_linked_at' => now(),
-                    ]),
+                    ],
                 ]);
             });
 

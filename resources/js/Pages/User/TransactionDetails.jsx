@@ -26,6 +26,7 @@ import {
 export default function TransactionDetails({ auth, transaction }) {
     const [showShareModal, setShowShareModal] = useState(false);
     const [copySuccess, setCopySuccess] = useState(false);
+    const displayAmount = transaction.type === "card_linking" ? 0 : Number(transaction.amount || 0);
 
     const { data, setData, post, processing, errors, reset } = useForm({
         email: "",

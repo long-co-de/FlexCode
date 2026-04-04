@@ -290,9 +290,9 @@ class WalletController extends AtomicController
         $transactions = Transaction::where('user_id', $user->id)
             ->whereIn('type', [
                 'wallet_funding',
-                'wallet_transfer_in',
-                'wallet_transfer_out',
-                'wallet_withdrawal',
+                'wallet_transfer',
+                'withdrawal',
+                'commission',
             ])
             ->orderBy('created_at', 'desc')
             ->paginate(15);

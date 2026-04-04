@@ -25,8 +25,13 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('transactions', function (Blueprint $table) {
-            $table->dropForeignIdFor(\App\Models\UserCard::class, 'card_id');
-            $table->dropColumn(['is_card_link_transaction', 'card_id']);
+            if (Schema::hasColumn('transactions', 'is_card_link_transaction')) {
+                $table->dropColumn('is_card_link_transaction');
+            }
+
+            if (Schema::hasColumn('transactions', 'card_id')) {
+                $table->dropColumn('card_id');
+            }
         });
     }
 };

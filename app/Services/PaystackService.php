@@ -94,10 +94,16 @@ class PaystackService
     public function initializeTransaction($amount, $email, $reference, $callbackUrl, $metadata = [])
     {
         try {
-            $response = Http::withHeaders([
+            $request = Http::withHeaders([
                 'Authorization' => 'Bearer '.$this->secretKey,
                 'Accept' => 'application/json',
-            ])->post($this->baseUrl.'/transaction/initialize', [
+            ]);
+
+            if (app()->environment('local')) {
+                $request = $request->withoutVerifying();
+            }
+
+            $response = $request->post($this->baseUrl.'/transaction/initialize', [
                 'amount' => $amount * 100, // Paystack amount is in kobo
                 'email' => $email,
                 'reference' => $reference,

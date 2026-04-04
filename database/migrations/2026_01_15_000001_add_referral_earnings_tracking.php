@@ -34,8 +34,9 @@ return new class extends Migration
         });
 
         Schema::table('transactions', function (Blueprint $table) {
-            $table->dropForeignIdFor(\App\Models\User::class, 'referral_user_id');
-            $table->dropColumn('referral_user_id');
+            if (Schema::hasColumn('transactions', 'referral_user_id')) {
+                $table->dropColumn('referral_user_id');
+            }
         });
     }
 };

@@ -11,6 +11,11 @@ use Illuminate\Support\Facades\Auth;
 
 class NotificationService
 {
+    public function __construct(
+        protected MobilePushService $mobilePushService
+    ) {
+    }
+
     /**
      * Send a system notification to a user.
      *
@@ -25,6 +30,16 @@ class NotificationService
     public function sendSystemNotification(User $user, string $title, string $message, string $type = 'info', string $action = null, string $actionUrl = null)
     {
         $user->notify(new SystemNotification($title, $message, $type, $action, $actionUrl));
+        $this->mobilePushService->sendToUser($user, [
+            'title' => $title,
+            'body' => $message,
+            'data' => [
+                'category' => 'system',
+                'type' => $type,
+                'action' => $action,
+                'action_url' => $actionUrl,
+            ],
+        ]);
     }
 
     /**
@@ -39,6 +54,18 @@ class NotificationService
     public function sendTransactionNotification(User $user, Transaction $transaction, string $message, string $type = 'info')
     {
         $user->notify(new TransactionNotification($transaction, $message, $type));
+        $this->mobilePushService->sendToUser($user, [
+            'title' => 'Transaction Update',
+            'body' => $message,
+            'data' => [
+                'category' => 'transaction',
+                'type' => $type,
+                'transaction_id' => $transaction->id,
+                'reference' => $transaction->reference,
+                'transaction_type' => $transaction->type,
+                'status' => $transaction->status,
+            ],
+        ]);
     }
 
     /**

@@ -13,6 +13,7 @@ class DatavendroService
 {
     protected $apiKey;
     protected $apiUrl;
+    protected bool $demoMode;
 
     private function extractStatus(array $responseData): ?string
     {
@@ -70,11 +71,58 @@ class DatavendroService
         return (string) $ident;
     }
 
+    private function extractErrorMessage(array $responseData, string $fallback): string
+    {
+        $message = $responseData['message']
+            ?? $responseData['error']
+            ?? ($responseData['data']['message'] ?? null)
+            ?? ($responseData['data']['error'] ?? null);
+
+        if (is_array($message)) {
+            $first = reset($message);
+            return is_string($first) ? $first : $fallback;
+        }
+
+        if (is_string($message) && trim($message) !== '') {
+            return $message;
+        }
+
+        return $fallback;
+    }
+
     public function __construct()
     {
         $this->apiKey = Setting::where('key', 'datavendro_api_key')->value('value') ?? '8b0db02d232377ca7c7dd354e30b41a423f7201d';
         $base = Setting::where('key', 'datavendro_api_url')->value('value') ?? 'https://datavendor.ng/api/';
         $this->apiUrl = rtrim($base, '/');
+        $this->demoMode = filter_var(env('DATAVENDRO_DEMO_MODE', false), FILTER_VALIDATE_BOOL);
+    }
+
+    private function isDemoMode(): bool
+    {
+        return $this->demoMode;
+    }
+
+    private function makeDemoId(string $prefix): string
+    {
+        return strtoupper($prefix) . now()->format('YmdHis') . random_int(100, 999);
+    }
+
+    private function demoSuccessPayload(string $service, array $data = []): array
+    {
+        return [
+            'Status' => 'successful',
+            'status' => 'successful',
+            'api_response' => ucfirst($service) . ' processed successfully in demo mode',
+            'data' => array_merge([
+                'id' => $this->makeDemoId(substr($service, 0, 3)),
+                'ident' => $this->makeDemoId(substr($service, -3)),
+                'status' => 'successful',
+                'service' => $service,
+                'processed_at' => now()->toISOString(),
+                'demo_mode' => true,
+            ], $data),
+        ];
     }
 
     protected function request(array $headers = [], array $options = [])
@@ -97,6 +145,17 @@ class DatavendroService
     public function getBalance()
     {
         try {
+            if ($this->isDemoMode()) {
+                return [
+                    'success' => true,
+                    'data' => [
+                        'balance' => (float) env('DATAVENDRO_DEMO_BALANCE', 500000),
+                        'wallet_balance' => (float) env('DATAVENDRO_DEMO_WALLET_BALANCE', 500000),
+                        'bonus_balance' => (float) env('DATAVENDRO_DEMO_BONUS_BALANCE', 0),
+                    ],
+                ];
+            }
+
             Log::info('Datavendro getBalance Request');
             $response = $this->request()->get($this->apiUrl . '/user');
             Log::info('Datavendro getBalance Response', ['status' => $response->status(), 'data' => $response->json()]);
@@ -196,6 +255,26 @@ class DatavendroService
     {
         $networkId = $this->getNetWorkId($network);
         try {
+            if ($this->isDemoMode()) {
+                $responseData = $this->demoSuccessPayload('airtime', [
+                    'reference' => $reference,
+                    'network' => strtoupper((string) $network),
+                    'network_id' => $networkId,
+                    'mobile_number' => $phone,
+                    'amount' => $amount,
+                    'airtime_type' => $airtimeType,
+                    'ported_number' => $ported,
+                ]);
+
+                return [
+                    'success' => true,
+                    'data' => $responseData,
+                    'api_transaction_id' => $this->extractApiTransactionId($responseData),
+                    'api_status' => $this->extractStatus($responseData),
+                    'message' => 'Airtime purchase successful',
+                ];
+            }
+
             $payload = [
                 'network' => $networkId,
                 'amount' => $amount,
@@ -223,7 +302,7 @@ class DatavendroService
 
             return [
                 'success' => false,
-                'message' => $response->json()['message'] ?? 'Failed to purchase airtime',
+                'message' => $this->extractErrorMessage($response->json() ?? [], 'Failed to purchase airtime'),
             ];
         } catch (Exception $e) {
             Log::error('Datavendro API Error: ' . $e->getMessage());
@@ -238,6 +317,25 @@ class DatavendroService
     {
         $networkId = $this->getNetWorkId($network);
         try {
+            if ($this->isDemoMode()) {
+                $responseData = $this->demoSuccessPayload('data', [
+                    'reference' => $reference,
+                    'network' => strtoupper((string) $network),
+                    'network_id' => $networkId,
+                    'mobile_number' => $phone,
+                    'plan' => $planCode,
+                    'ported_number' => $ported,
+                ]);
+
+                return [
+                    'success' => true,
+                    'data' => $responseData,
+                    'api_transaction_id' => $this->extractApiTransactionId($responseData),
+                    'api_status' => $this->extractStatus($responseData),
+                    'message' => 'Data purchase successful',
+                ];
+            }
+
             $payload = [
                 'network' => $networkId,
                 'mobile_number' => $phone,
@@ -264,7 +362,7 @@ class DatavendroService
 
             return [
                 'success' => false,
-                'message' => $response->json()['message'] ?? 'Failed to purchase data',
+                'message' => $this->extractErrorMessage($response->json() ?? [], 'Failed to purchase data'),
             ];
         } catch (Exception $e) {
             Log::error('Datavendro API Error: ' . $e->getMessage());
@@ -278,6 +376,20 @@ class DatavendroService
     public function validateIuc($smartCardNumber, $cableName)
     {
         try {
+            if ($this->isDemoMode()) {
+                return [
+                    'success' => true,
+                    'data' => [
+                        'smart_card_number' => $smartCardNumber,
+                        'cablename' => $cableName,
+                        'name' => env('DATAVENDRO_DEMO_CABLE_CUSTOMER', 'Demo Cable Customer'),
+                        'customer_name' => env('DATAVENDRO_DEMO_CABLE_CUSTOMER', 'Demo Cable Customer'),
+                        'status' => 'verified',
+                        'demo_mode' => true,
+                    ],
+                ];
+            }
+
             $params = [
                 'smart_card_number' => $smartCardNumber,
                 'cablename' => $cableName
@@ -295,7 +407,7 @@ class DatavendroService
 
             return [
                 'success' => false,
-                'message' => $response->json()['message'] ?? 'IUC validation failed',
+                'message' => $this->extractErrorMessage($response->json() ?? [], 'IUC validation failed'),
             ];
         } catch (Exception $e) {
             Log::error('Datavendro API Error: ' . $e->getMessage());
@@ -309,6 +421,23 @@ class DatavendroService
     public function subscribeCable($smartCardNumber, $cableName, $cablePlan)
     {
         try {
+            if ($this->isDemoMode()) {
+                $responseData = $this->demoSuccessPayload('cable', [
+                    'cablename' => $cableName,
+                    'cableplan' => $cablePlan,
+                    'smart_card_number' => $smartCardNumber,
+                    'customer_name' => env('DATAVENDRO_DEMO_CABLE_CUSTOMER', 'Demo Cable Customer'),
+                ]);
+
+                return [
+                    'success' => true,
+                    'data' => $responseData,
+                    'api_transaction_id' => $this->extractApiTransactionId($responseData),
+                    'api_status' => $this->extractStatus($responseData),
+                    'message' => 'Cable subscription successful',
+                ];
+            }
+
             $payload = [
                 'cablename' => $cableName,
                 'cableplan' => $cablePlan,
@@ -334,7 +463,7 @@ class DatavendroService
 
             return [
                 'success' => false,
-                'message' => $response->json()['message'] ?? 'Failed to process cable subscription',
+                'message' => $this->extractErrorMessage($response->json() ?? [], 'Failed to process cable subscription'),
             ];
         } catch (Exception $e) {
             Log::error('Datavendro API Error: ' . $e->getMessage());
@@ -379,6 +508,22 @@ class DatavendroService
     public function validateMeter($meterNumber, $discoName, $meterType)
     {
         try {
+            if ($this->isDemoMode()) {
+                return [
+                    'success' => true,
+                    'data' => [
+                        'meter_number' => $meterNumber,
+                        'name' => env('DATAVENDRO_DEMO_ELECTRICITY_CUSTOMER', 'Demo Meter Customer'),
+                        'address' => env('DATAVENDRO_DEMO_ELECTRICITY_ADDRESS', '12 Demo Avenue, Lagos'),
+                        'meter_type' => strtolower((string) $meterType),
+                        'disco_name' => $this->getDiscoFullName($discoName),
+                        'status' => 'verified',
+                        'invalid' => false,
+                        'demo_mode' => true,
+                    ],
+                ];
+            }
+
             $fullName = $this->getDiscoFullName($discoName);
             $meterTypeValue = (strtolower($meterType) === 'prepaid') ? 'PREPAID' : 'POSTPAID';
 
@@ -425,6 +570,32 @@ class DatavendroService
     public function payElectricityBill($meterNumber, $discoName, $amount, $meterType, $reference = null, $phone = null, $customerName = null, $customerAddress = null)
     {
         try {
+            if ($this->isDemoMode()) {
+                $responseData = $this->demoSuccessPayload('electricity', [
+                    'reference' => $reference,
+                    'meter_number' => $meterNumber,
+                    'meter_type' => strtolower((string) $meterType),
+                    'disco_name' => $this->getDiscoFullName($discoName),
+                    'amount' => $amount,
+                    'customer_phone' => $phone,
+                    'customer_name' => $customerName ?: env('DATAVENDRO_DEMO_ELECTRICITY_CUSTOMER', 'Demo Meter Customer'),
+                    'customer_address' => $customerAddress ?: env('DATAVENDRO_DEMO_ELECTRICITY_ADDRESS', '12 Demo Avenue, Lagos'),
+                    'token' => env('DATAVENDRO_DEMO_TOKEN', '1234-5678-9012-3456-7890'),
+                    'units' => (string) env('DATAVENDRO_DEMO_UNITS', '42.15'),
+                ]);
+
+                return [
+                    'success' => true,
+                    'data' => $responseData,
+                    'token' => $responseData['data']['token'],
+                    'units' => $responseData['data']['units'],
+                    'api_transaction_id' => $this->extractApiTransactionId($responseData),
+                    'api_ident' => $this->extractApiIdent($responseData),
+                    'api_status' => $this->extractStatus($responseData),
+                    'message' => 'Electricity bill payment successful',
+                ];
+            }
+
             $meterTypeValue = (strtolower($meterType) === 'prepaid') ? "Prepaid" : "Postpaid";
             $discoId = $this->getDiscoId($discoName);
 

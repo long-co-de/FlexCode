@@ -1,0 +1,155 @@
+openapi: 3.1.0
+info:
+  title: BorrowLite Mobile API
+  version: 1.0.0
+  description: Versioned mobile API for the BorrowLite Expo client.
+servers:
+  - url: https://example.com/api/mobile/v1
+security:
+  - bearerAuth: []
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: Sanctum
+  schemas:
+    Envelope:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data: {}
+        meta:
+          type: object
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+    FundingInitRequest:
+      type: object
+      required: [amount, request_id]
+      properties:
+        amount:
+          type: number
+        request_id:
+          type: string
+        redirect_url:
+          type: string
+          format: uri
+    DeviceRequest:
+      type: object
+      required: [expo_push_token, platform]
+      properties:
+        expo_push_token:
+          type: string
+        platform:
+          type: string
+          enum: [ios, android, web]
+        device_name:
+          type: string
+        app_version:
+          type: string
+paths:
+  /auth/login:
+    post:
+      summary: Login and return a mobile bearer token plus bootstrap payload.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login successful
+  /bootstrap:
+    get:
+      summary: Fetch the startup payload for the mobile app.
+      responses:
+        '200':
+          description: Bootstrap payload
+  /wallet/funding/init:
+    post:
+      summary: Initialize hosted checkout for wallet funding.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FundingInitRequest'
+      responses:
+        '201':
+          description: Checkout initialized
+  /wallet/funding/{reference}/status:
+    get:
+      summary: Poll the current funding status by reference.
+      parameters:
+        - name: reference
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Funding status
+  /cards/link/init:
+    post:
+      summary: Initialize hosted card-linking verification.
+      responses:
+        '201':
+          description: Card linking initialized
+  /cards/link/{reference}/status:
+    get:
+      summary: Poll card-linking status by reference.
+      parameters:
+        - name: reference
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Card-linking status
+  /borrowing:
+    get:
+      summary: List the authenticated user's borrowings.
+      responses:
+        '200':
+          description: Borrowing list
+  /devices:
+    get:
+      summary: List registered mobile devices.
+      responses:
+        '200':
+          description: Registered devices
+    post:
+      summary: Register or refresh an Expo device token.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceRequest'
+      responses:
+        '201':
+          description: Device registered
+  /devices/{device}:
+    delete:
+      summary: Deactivate a registered device.
+      parameters:
+        - name: device
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Device deactivated

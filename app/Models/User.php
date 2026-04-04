@@ -266,4 +266,12 @@ public function overdueBorrowings()
 {
     return $this->borrowings()->where('status', 'overdue');
 }
+
+/**
+ * Get the user's registered mobile devices.
+ */
+public function mobileDevices()
+{
+    return $this->hasMany(MobileDevice::class);
+}
 }

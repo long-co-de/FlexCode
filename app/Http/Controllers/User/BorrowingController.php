@@ -83,6 +83,24 @@ class BorrowingController extends AtomicController
     }
 
     /**
+     * Mobile/API-compatible borrowing list endpoint.
+     */
+    public function myBorrowingsApi(Request $request)
+    {
+        $borrowings = $request->user()->borrowings()
+            ->with(['repayments' => function ($query) {
+                $query->orderBy('created_at', 'desc');
+            }])
+            ->orderBy('due_date', 'asc')
+            ->paginate(20);
+
+        return response()->json([
+            'success' => true,
+            'borrowings' => $borrowings,
+        ]);
+    }
+
+    /**
      * Display a specific borrowing.
      */
     public function show(Borrowing $borrowing)

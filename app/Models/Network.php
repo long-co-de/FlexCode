@@ -32,6 +32,11 @@ class Network extends Model
         return $this->hasMany(AirtimeDiscount::class);
     }
 
+    public function airtimeDiscount()
+    {
+        return $this->hasOne(AirtimeDiscount::class);
+    }
+
     /**
      * Get the profit percentage for data plans
      * Falls back to system default if not set

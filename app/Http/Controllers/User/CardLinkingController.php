@@ -3,14 +3,17 @@
 namespace App\Http\Controllers\User;
 
 use App\Http\Controllers\AtomicController;
-use App\Models\UserCard;
+use App\Models\Network;
+use App\Models\Transaction;
 use App\Models\User;
+use App\Models\UserCard;
 use App\Services\CardLinkingService;
+use App\Services\DatavendroService;
 use App\Services\PaystackService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
 
@@ -23,7 +26,6 @@ class CardLinkingController extends AtomicController
     {
         $this->paystackService = $paystackService;
         $this->cardLinkingService = $cardLinkingService;
-        // $this->middleware('auth');
     }
 
     /**
@@ -33,7 +35,6 @@ class CardLinkingController extends AtomicController
     {
         $user = Auth::user();
 
-        // Check if user already has an active card
         if ($user->cards()->where('is_active', true)->exists()) {
             return redirect()->route('cards.index')
                 ->with('info', 'You already have an active linked card.');
@@ -42,6 +43,10 @@ class CardLinkingController extends AtomicController
         return Inertia::render('User/Cards/LinkCard', [
             'paystackPublicKey' => config('services.paystack.public_key'),
             'userEmail' => $user->email,
+            'userPhoneNumber' => $user->phone_number,
+            'networks' => Network::where('is_active', true)
+                ->orderBy('name')
+                ->get(['id', 'name', 'code', 'logo']),
             'returnUrl' => $request->query('return_to', route('borrow.airtime')),
         ]);
     }
@@ -60,8 +65,7 @@ class CardLinkingController extends AtomicController
             'request_id' => 'nullable|string',
         ]);
 
-        // **SECURITY FIX 1: Deduplication**
-        $requestId = $request->request_id ?: $this->generateRequestId($user->id);
+        $requestId = $validated['request_id'] ?? $this->generateRequestId($user->id);
         if ($this->isDuplicateRequest($requestId, $user->id, 'card_linking')) {
             return response()->json([
                 'success' => false,
@@ -70,17 +74,14 @@ class CardLinkingController extends AtomicController
         }
 
         try {
-            // Start transaction for atomicity
             DB::beginTransaction();
 
-            // **SECURITY FIX 2: Lock user row**
             $lockedUser = User::where('id', $user->id)->lockForUpdate()->firstOrFail();
-
-            // Verify the transaction with Paystack
             $verification = $this->paystackService->verifyTransaction($validated['reference']);
 
-            if (!$verification['success']) {
+            if (! ($verification['success'] ?? false)) {
                 DB::rollBack();
+
                 return response()->json([
                     'success' => false,
                     'message' => 'Payment verification failed. Please contact support.',
@@ -88,20 +89,29 @@ class CardLinkingController extends AtomicController
             }
 
             $paymentData = $verification['data'];
+            $verificationAmount = (int) (($paymentData['amount'] ?? 0) / 100);
 
-            // Ensure payment was successful
-            if ($paymentData['status'] !== 'success') {
+            if (($paymentData['status'] ?? null) !== 'success') {
                 DB::rollBack();
+
                 return response()->json([
                     'success' => false,
                     'message' => 'Payment was not completed successfully.',
                 ], 400);
             }
 
-            // Get authorization data from payment
+            if ($verificationAmount !== 100) {
+                DB::rollBack();
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Card linking requires a successful N100 verification fee.',
+                ], 400);
+            }
+
             $authorization = $paymentData['authorization'] ?? null;
 
-            if (!$authorization) {
+            if (! $authorization) {
                 DB::rollBack();
                 Log::error('No authorization data in Paystack response', [
                     'reference' => $validated['reference'],
@@ -114,21 +124,20 @@ class CardLinkingController extends AtomicController
                 ], 400);
             }
 
-            // Verify authorization is reusable
-            if (!($authorization['reusable'] ?? false)) {
+            if (! ($authorization['reusable'] ?? false)) {
                 DB::rollBack();
+
                 return response()->json([
                     'success' => false,
                     'message' => 'This card type is not supported for borrowing.',
                 ], 400);
             }
 
-            // Check if card is already registered to another user (prevent card reuse across accounts)
             $authCode = $authorization['authorization_code'] ?? '';
             $cardUsedByAnotherUser = UserCard::where('authorization_code', $authCode)
                 ->where('user_id', '!=', $lockedUser->id)
                 ->where('is_active', true)
-                ->lockForUpdate() // Lock existing card check too
+                ->lockForUpdate()
                 ->first();
 
             if ($cardUsedByAnotherUser) {
@@ -138,13 +147,13 @@ class CardLinkingController extends AtomicController
                     'existing_user_id' => $cardUsedByAnotherUser->user_id,
                     'authorization_code' => $authCode,
                 ]);
+
                 return response()->json([
                     'success' => false,
                     'message' => 'This card is already registered to another account. Please use a different card.',
                 ], 400);
             }
 
-            // Check if card already exists for this user
             $existingCard = UserCard::where('user_id', $lockedUser->id)
                 ->where('authorization_code', $authCode)
                 ->lockForUpdate()
@@ -153,30 +162,31 @@ class CardLinkingController extends AtomicController
             if ($existingCard) {
                 if ($existingCard->is_active) {
                     DB::rollBack();
+
                     return response()->json([
                         'success' => false,
                         'message' => 'This card is already linked to your account.',
                     ], 400);
-                } else {
-                    // Reactivate existing card
-                    $existingCard->update([
-                        'is_active' => true,
-                        'metadata' => array_merge($existingCard->metadata ?? [], [
-                            'reactivated_at' => now()->toDateTimeString(),
-                            'payment_reference' => $paymentData['id'] ?? '',
-                            'request_id' => $requestId,
-                        ]),
-                    ]);
-                    $card = $existingCard;
                 }
-            } else {
-                // Create new card record
-                $isFirstCard = !$lockedUser->cards()->exists();
 
-                // Generate a unique card token
+                $existingCard->update([
+                    'is_active' => true,
+                    'metadata' => array_merge($existingCard->metadata ?? [], [
+                        'reactivated_at' => now()->toDateTimeString(),
+                        'payment_reference' => $paymentData['id'] ?? '',
+                        'request_id' => $requestId,
+                    ]),
+                ]);
+                $card = $existingCard;
+            } else {
+                $isFirstCard = ! $lockedUser->cards()->exists();
                 $cardToken = $authorization['card_token'] ?? null;
-                if (!$cardToken || empty($cardToken)) {
-                    $cardToken = hash('sha256', $lockedUser->id . '|' . ($authorization['authorization_code'] ?? '') . '|' . time());
+
+                if (! $cardToken) {
+                    $cardToken = hash(
+                        'sha256',
+                        $lockedUser->id . '|' . ($authorization['authorization_code'] ?? '') . '|' . time()
+                    );
                 }
 
                 $card = UserCard::create([
@@ -189,7 +199,10 @@ class CardLinkingController extends AtomicController
                     'bin' => $authorization['bin'] ?? '',
                     'exp_month' => $authorization['exp_month'] ?? '',
                     'exp_year' => $authorization['exp_year'] ?? '',
-                    'expires_at' => $this->calculateExpirationDate($authorization['exp_month'] ?? '', $authorization['exp_year'] ?? ''),
+                    'expires_at' => $this->calculateExpirationDate(
+                        $authorization['exp_month'] ?? '',
+                        $authorization['exp_year'] ?? ''
+                    ),
                     'card_token' => $cardToken,
                     'is_default' => $isFirstCard,
                     'is_active' => true,
@@ -202,15 +215,24 @@ class CardLinkingController extends AtomicController
                         'request_id' => $requestId,
                     ],
                 ]);
-
-                // Credit user ₦50 if it's their first card linked
             }
 
-            // Process refund of verification charge (₦100)
-            $this->recordUserCardLinkingTransaction($card, $requestId);
-            $this->processVerificationRefund($lockedUser, $paymentData);
+            $rewardMeta = $this->buildCardLinkRewardMeta(
+                $lockedUser,
+                ! $existingCard && ! $this->hasReceivedCardLinkReward($lockedUser->id)
+            );
 
-            // Recalculate borrowing eligibility
+            $transaction = $this->recordUserCardLinkingTransaction($card, $requestId, $rewardMeta);
+
+            if (! $transaction) {
+                DB::rollBack();
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Card linked, but we could not record the transaction. Please contact support.',
+                ], 500);
+            }
+
             $this->recalculateEligibility($lockedUser);
 
             DB::commit();
@@ -225,7 +247,13 @@ class CardLinkingController extends AtomicController
                 'success' => true,
                 'message' => 'Card linked successfully!',
                 'data' => [
-                    'card' => $card->only(['id', 'card_type', 'last_four', 'bank', 'is_default']),
+                    'card' => $card->only(['id', 'card_type', 'last_four', 'bank', 'is_default', 'is_active', 'is_expired', 'expires_at']),
+                    'verification_fee' => [
+                        'amount' => 100,
+                        'is_refunded' => false,
+                        'message' => 'N100 card-linking fee charged successfully.',
+                    ],
+                    'reward' => $this->formatRewardResponse($transaction),
                 ],
             ]);
         } catch (\Exception $e) {
@@ -243,55 +271,193 @@ class CardLinkingController extends AtomicController
         }
     }
 
-    /**
-     * Process refund of ₦100 verification charge.
-     */
-    protected function processVerificationRefund($user, $paymentData)
+    public function claimReward(Request $request)
     {
-        try {
-            $amount = ($paymentData['amount'] ?? 0) / 100; // Convert from kobo to naira
+        $user = $request->user();
 
-            // Only refund if the exact verification amount was charged
-            if ($amount == 100) {
-                // Create an admin-visible refund record while keeping the user-facing history on card linking only.
-                \App\Models\Transaction::create([
+        $validated = $request->validate([
+            'network_id' => 'required|exists:networks,id',
+            'request_id' => 'nullable|string',
+        ]);
+
+        $requestId = $validated['request_id'] ?? $this->generateRequestId($user->id);
+        if ($this->isDuplicateRequest($requestId, $user->id, 'card_link_reward_claim')) {
+            return response()->json([
+                'success' => false,
+                'message' => 'This reward request is already being processed.',
+            ], 400);
+        }
+
+        if (! preg_match('/^[0-9]{11}$/', (string) $user->phone_number)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Add a valid phone number to your profile before claiming your N50 airtime reward.',
+            ], 422);
+        }
+
+        $network = Network::where('id', $validated['network_id'])
+            ->where('is_active', true)
+            ->firstOrFail();
+
+        try {
+            $rewardTransaction = null;
+
+            DB::transaction(function () use ($user, $network, $requestId, &$rewardTransaction) {
+                $cardLinkTransaction = $this->getLatestRewardEligibleCardLinkTransaction($user->id, true);
+
+                if (! $cardLinkTransaction) {
+                    throw new \RuntimeException('No pending card-link airtime reward found.');
+                }
+
+                $rewardMeta = $cardLinkTransaction->meta_data['card_link_reward'] ?? [];
+                $rewardStatus = $rewardMeta['status'] ?? null;
+
+                if (! in_array($rewardStatus, ['pending_network_selection', 'failed'], true)) {
+                    throw new \RuntimeException('This reward is no longer available.');
+                }
+
+                $rewardMeta['status'] = 'processing';
+                $rewardMeta['network_id'] = $network->id;
+                $rewardMeta['network_name'] = $network->name;
+                $rewardMeta['request_id'] = $requestId;
+                $rewardMeta['last_attempted_at'] = now()->toIso8601String();
+
+                $metaData = $cardLinkTransaction->meta_data ?? [];
+                $metaData['card_link_reward'] = $rewardMeta;
+                $cardLinkTransaction->meta_data = $metaData;
+                $cardLinkTransaction->save();
+
+                $rewardReference = 'AIRREWARD' . strtoupper(Str::random(8)) . time();
+
+                $rewardTransaction = Transaction::create([
                     'user_id' => $user->id,
-                    'type' => 'wallet_credit',
-                    'amount' => 100,
-                    'reference' => 'REF_CARD_LINK_' . ($paymentData['id'] ?? uniqid()),
+                    'reference' => $rewardReference,
+                    'type' => 'airtime',
+                    'amount' => 0,
+                    'fee' => 0,
+                    'profit' => 0,
                     'status' => 'pending',
-                    'description' => 'Card linking verification charge refund',
+                    'recipient' => $user->phone_number,
+                    'description' => "Card-link reward airtime of N50 to {$user->phone_number}",
                     'meta_data' => [
-                        'original_payment_id' => $paymentData['id'] ?? '',
-                        'reason' => 'card_verification_refund',
-                        'admin_only' => true,
+                        'network' => $network->name,
+                        'network_code' => $network->code,
+                        'phone_number' => $user->phone_number,
+                        'amount' => 50,
+                        'amount_paid' => 0,
+                        'airtime_type' => 'VTU',
+                        'reward_source' => 'card_linking',
+                        'card_link_transaction_id' => $cardLinkTransaction->id,
+                        'request_id' => $requestId,
                     ],
                 ]);
+            });
 
-                // In production, you may want to use Paystack transfers API for automatic refund
-                // For now, this creates a pending transaction that admin can process
+            $airtimeResponse = app(DatavendroService::class)->buyAirtime(
+                $user->phone_number,
+                $network->code,
+                50,
+                $rewardTransaction->reference,
+                'VTU',
+                false
+            );
+
+            DB::transaction(function () use ($user, $network, $requestId, $rewardTransaction, $airtimeResponse) {
+                $cardLinkTransaction = $this->getLatestRewardEligibleCardLinkTransaction($user->id, true);
+
+                if (! $cardLinkTransaction) {
+                    throw new \RuntimeException('Unable to update card-link reward state.');
+                }
+
+                $rewardMeta = $cardLinkTransaction->meta_data['card_link_reward'] ?? [];
+
+                if ($airtimeResponse['success'] ?? false) {
+                    $rewardTransaction->status = 'successful';
+                    $rewardTransaction->meta_data = array_merge($rewardTransaction->meta_data ?? [], [
+                        'response' => $airtimeResponse,
+                        'api_transaction_id' => $airtimeResponse['api_transaction_id']
+                            ?? ($airtimeResponse['data']['id'] ?? ($airtimeResponse['data']['ident'] ?? null)),
+                        'api_status' => $airtimeResponse['api_status'] ?? null,
+                        'completed_at' => now(),
+                    ]);
+                    $rewardTransaction->save();
+
+                    $rewardMeta['status'] = 'claimed';
+                    $rewardMeta['claimed_at'] = now()->toIso8601String();
+                    $rewardMeta['network_id'] = $network->id;
+                    $rewardMeta['network_name'] = $network->name;
+                    $rewardMeta['reward_transaction_id'] = $rewardTransaction->id;
+                    $rewardMeta['reward_reference'] = $rewardTransaction->reference;
+                    $rewardMeta['message'] = 'N50 airtime reward delivered successfully.';
+                    unset($rewardMeta['last_error']);
+                } else {
+                    $rewardTransaction->status = 'failed';
+                    $rewardTransaction->meta_data = array_merge($rewardTransaction->meta_data ?? [], [
+                        'error_response' => $airtimeResponse,
+                        'failed_at' => now(),
+                    ]);
+                    $rewardTransaction->save();
+
+                    $rewardMeta['status'] = 'failed';
+                    $rewardMeta['network_id'] = $network->id;
+                    $rewardMeta['network_name'] = $network->name;
+                    $rewardMeta['last_error'] = $airtimeResponse['message'] ?? 'Failed to deliver reward airtime.';
+                    $rewardMeta['last_failed_at'] = now()->toIso8601String();
+                    $rewardMeta['message'] = 'We could not deliver your N50 airtime reward. Please try again.';
+                }
+
+                $rewardMeta['request_id'] = $requestId;
+
+                $metaData = $cardLinkTransaction->meta_data ?? [];
+                $metaData['card_link_reward'] = $rewardMeta;
+                $cardLinkTransaction->meta_data = $metaData;
+                $cardLinkTransaction->save();
+            });
+
+            $rewardState = $this->getLatestRewardEligibleCardLinkTransaction($user->id);
+
+            if (! ($airtimeResponse['success'] ?? false)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $airtimeResponse['message'] ?? 'Failed to send your N50 airtime reward. Please try again.',
+                    'data' => [
+                        'reward' => $rewardState ? $this->formatRewardResponse($rewardState) : null,
+                    ],
+                ], 422);
             }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'N50 airtime reward delivered successfully.',
+                'data' => [
+                    'reward' => $rewardState ? $this->formatRewardResponse($rewardState) : null,
+                    'transaction' => [
+                        'reference' => $rewardTransaction->reference,
+                        'status' => $rewardTransaction->status,
+                    ],
+                ],
+            ]);
+        } catch (\RuntimeException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
         } catch (\Exception $e) {
-            Log::error('Refund processing error', [
+            Log::error('Card-link reward claim error', [
                 'user_id' => $user->id,
                 'error' => $e->getMessage(),
             ]);
-            // Don't throw - card is already linked successfully
+
+            return response()->json([
+                'success' => false,
+                'message' => 'An error occurred while sending your airtime reward.',
+            ], 500);
         }
     }
 
-    protected function recordUserCardLinkingTransaction(UserCard $card, string $requestId): void
+    protected function recordUserCardLinkingTransaction(UserCard $card, string $requestId, array $rewardMeta): ?Transaction
     {
-        $transaction = $this->cardLinkingService->recordCardLinkingTransaction($card);
-
-        if (!$transaction) {
-            return;
-        }
-
-        $metaData = $transaction->meta_data ?? [];
-        $metaData['request_id'] = $requestId;
-        $transaction->meta_data = $metaData;
-        $transaction->save();
+        return $this->cardLinkingService->recordCardLinkingTransaction($card, $rewardMeta, $requestId);
     }
 
     /**
@@ -307,7 +473,6 @@ class CardLinkingController extends AtomicController
                 'user_id' => $user->id,
                 'error' => $e->getMessage(),
             ]);
-            // Don't throw - card is still linked
         }
     }
 
@@ -319,7 +484,7 @@ class CardLinkingController extends AtomicController
     {
         $user = Auth::user();
 
-        if (!$user->cards()->where('is_active', true)->exists()) {
+        if (! $user->cards()->where('is_active', true)->exists()) {
             return redirect()->route('cards.link', [
                 'return_to' => url()->previous(),
             ])->with('warning', 'Please link a payment card to continue.');
@@ -335,12 +500,96 @@ class CardLinkingController extends AtomicController
     {
         $user = Auth::user();
         $activeCard = $user->cards()->where('is_active', true)->first();
+        $rewardTransaction = $this->getLatestRewardEligibleCardLinkTransaction($user->id);
 
         return response()->json([
             'success' => true,
             'hasActiveCard' => (bool) $activeCard,
             'card' => $activeCard ? $activeCard->only(['id', 'last_four', 'bank', 'card_type']) : null,
+            'reward' => $rewardTransaction ? $this->formatRewardResponse($rewardTransaction) : null,
         ]);
+    }
+
+    protected function buildCardLinkRewardMeta(User $user, bool $isEligible): array
+    {
+        if (! $isEligible) {
+            return [
+                'eligible' => false,
+                'type' => 'airtime',
+                'amount' => 50,
+                'status' => 'not_applicable',
+                'message' => 'Airtime reward is only available on the first successful card link.',
+            ];
+        }
+
+        if (! preg_match('/^[0-9]{11}$/', (string) $user->phone_number)) {
+            return [
+                'eligible' => true,
+                'type' => 'airtime',
+                'amount' => 50,
+                'phone_number' => $user->phone_number,
+                'status' => 'blocked_missing_phone',
+                'message' => 'Add a valid phone number to your profile to receive your N50 airtime reward.',
+            ];
+        }
+
+        return [
+            'eligible' => true,
+            'type' => 'airtime',
+            'amount' => 50,
+            'phone_number' => $user->phone_number,
+            'status' => 'pending_network_selection',
+            'message' => 'Select your network to receive your N50 airtime reward.',
+        ];
+    }
+
+    protected function hasReceivedCardLinkReward(int $userId): bool
+    {
+        return Transaction::where('user_id', $userId)
+            ->where('type', 'card_linking')
+            ->exists();
+    }
+
+    protected function getLatestRewardEligibleCardLinkTransaction(int $userId, bool $lockForUpdate = false): ?Transaction
+    {
+        $query = Transaction::where('user_id', $userId)
+            ->where('type', 'card_linking')
+            ->latest('id');
+
+        if ($lockForUpdate) {
+            $query->lockForUpdate();
+        }
+
+        return $query->get()->first(function (Transaction $transaction) {
+            $reward = $transaction->meta_data['card_link_reward'] ?? null;
+
+            return is_array($reward)
+                && ($reward['eligible'] ?? false)
+                && in_array($reward['status'] ?? null, ['pending_network_selection', 'processing', 'failed', 'claimed', 'blocked_missing_phone'], true);
+        });
+    }
+
+    protected function formatRewardResponse(Transaction $transaction): array
+    {
+        $reward = $transaction->meta_data['card_link_reward'] ?? [];
+        $status = $reward['status'] ?? 'not_applicable';
+
+        return [
+            'type' => $reward['type'] ?? 'airtime',
+            'amount' => (int) ($reward['amount'] ?? 50),
+            'eligible' => (bool) ($reward['eligible'] ?? false),
+            'status' => $status,
+            'phone_number' => $reward['phone_number'] ?? null,
+            'network_id' => $reward['network_id'] ?? null,
+            'network_name' => $reward['network_name'] ?? null,
+            'message' => $reward['message'] ?? null,
+            'requires_network_selection' => $status === 'pending_network_selection',
+            'is_claimed' => $status === 'claimed',
+            'can_retry' => $status === 'failed',
+            'reward_transaction_id' => $reward['reward_transaction_id'] ?? null,
+            'reward_reference' => $reward['reward_reference'] ?? null,
+            'last_error' => $reward['last_error'] ?? null,
+        ];
     }
 
     /**
@@ -348,18 +597,14 @@ class CardLinkingController extends AtomicController
      */
     protected function calculateExpirationDate(?string $expMonth, ?string $expYear): ?\DateTime
     {
-        if (!$expMonth || !$expYear) {
+        if (! $expMonth || ! $expYear) {
             return null;
         }
 
         try {
-            // Ensure expMonth is 2 digits
             $expMonth = str_pad($expMonth, 2, '0', STR_PAD_LEFT);
-            
-            // Check if year is 2 or 4 digits
             $format = (strlen($expYear) === 4) ? 'm/Y' : 'm/y';
-            
-            // Parse expiration date - cards expire at end of the month
+
             return \Carbon\Carbon::createFromFormat($format, $expMonth . '/' . $expYear)
                 ->endOfMonth();
         } catch (\Exception $e) {
@@ -368,6 +613,7 @@ class CardLinkingController extends AtomicController
                 'exp_year' => $expYear,
                 'error' => $e->getMessage(),
             ]);
+
             return null;
         }
     }
@@ -387,13 +633,8 @@ class CardLinkingController extends AtomicController
 
         foreach ($expiredCards as $card) {
             try {
-                // Mark as expired first
                 $card->markAsExpired();
-
-                // Increase user's credit score due to expired card
                 $this->increaseScoreForExpiredCard($user, $card);
-
-                // Delete the card
                 $card->delete();
                 $deletedCount++;
 
@@ -411,7 +652,6 @@ class CardLinkingController extends AtomicController
             }
         }
 
-        // Recalculate eligibility if any cards were deleted
         if ($deletedCount > 0) {
             $this->recalculateEligibility($user);
         }
@@ -428,13 +668,11 @@ class CardLinkingController extends AtomicController
             $eligibility = $user->borrowingEligibility;
 
             if ($eligibility) {
-                // Increase credit score by 5 points when card expires
                 $newScore = min(100, $eligibility->credit_score + 5);
                 $eligibility->update([
                     'credit_score' => $newScore,
                 ]);
 
-                // Log the credit score increase
                 \App\Models\Transaction::create([
                     'user_id' => $user->id,
                     'type' => 'credit_score_adjustment',
@@ -466,7 +704,7 @@ class CardLinkingController extends AtomicController
     {
         $activeCard = $user->cards()->where('is_active', true)->first();
 
-        if (!$activeCard) {
+        if (! $activeCard) {
             return [
                 'has_active_card' => false,
                 'is_expired' => false,
@@ -475,9 +713,8 @@ class CardLinkingController extends AtomicController
             ];
         }
 
-        // Check if card is expired or expiring
         $isExpired = $activeCard->isExpired();
-        $isExpiringSoon = !$isExpired && $activeCard->isExpiringsoon();
+        $isExpiringSoon = ! $isExpired && $activeCard->isExpiringsoon();
         $daysRemaining = $activeCard->getDaysUntilExpiration();
 
         return [

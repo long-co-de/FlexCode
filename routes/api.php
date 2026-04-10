@@ -225,6 +225,7 @@ Route::middleware('auth:sanctum')
         Route::get('/', [MobileCardController::class, 'index']);
         Route::post('/link/init', [MobileCardController::class, 'initializeLink']);
         Route::get('/link/{reference}/status', [MobileCardController::class, 'linkStatus']);
+        Route::post('/link/reward', [MobileCardController::class, 'claimReward']);
         Route::post('/{card}/set-default', [MobileCardController::class, 'setDefault']);
         Route::delete('/{card}', [MobileCardController::class, 'destroy']);
     });

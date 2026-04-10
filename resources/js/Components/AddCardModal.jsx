@@ -1,13 +1,12 @@
-// File: resources/js/Components/Cards/AddCardModal.jsx
 import React, { useState } from 'react';
 import PaystackWrapper from './PaystackWrapper';
 import { usePage } from '@inertiajs/react';
-import { 
-    XMarkIcon, 
-    ShieldCheckIcon, 
+import {
     ArrowPathIcon,
     CreditCardIcon,
-    InformationCircleIcon
+    InformationCircleIcon,
+    ShieldCheckIcon,
+    XMarkIcon,
 } from '@heroicons/react/24/outline';
 import axios from 'axios';
 
@@ -29,8 +28,8 @@ const AddCardModal = ({ paystackPublicKey, onClose, onSuccess }) => {
                 exp_month: response.card?.exp_month || '',
                 exp_year: response.card?.exp_year || '',
                 bank: response.card?.bank || 'Unknown Bank',
-                email: email,
-                signature: response.signature || ''
+                email,
+                signature: response.signature || '',
             };
 
             const saveResponse = await axios.post(route('cards.store'), cardData);
@@ -40,7 +39,6 @@ const AddCardModal = ({ paystackPublicKey, onClose, onSuccess }) => {
             } else {
                 throw new Error(saveResponse.data.message || 'Failed to save card');
             }
-            
         } catch (error) {
             console.error('Card processing error:', error);
             setError(error.message || 'Failed to process card. Please try again.');
@@ -56,11 +54,11 @@ const AddCardModal = ({ paystackPublicKey, onClose, onSuccess }) => {
     return (
         <div className="fixed inset-0 z-[100] overflow-y-auto">
             <div className="flex min-h-full items-center justify-center p-4 text-center sm:p-0">
-                <div 
-                    className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity" 
+                <div
+                    className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity"
                     onClick={onClose}
                 />
-                
+
                 <div className="relative transform overflow-hidden rounded-[2.5rem] bg-white text-left shadow-2xl transition-all sm:my-8 sm:w-full sm:max-w-lg border border-slate-100 animate-in zoom-in-95 duration-200">
                     <div className="absolute right-6 top-6">
                         <button
@@ -104,8 +102,8 @@ const AddCardModal = ({ paystackPublicKey, onClose, onSuccess }) => {
                                     {[
                                         'Open secure Paystack payment window',
                                         'Provide valid card details',
-                                        'Authorize ₦100 verification fee',
-                                        'Receive instant refund to your card'
+                                        'Authorize N100 card-linking fee',
+                                        'First successful link unlocks N50 airtime reward',
                                     ].map((step, i) => (
                                         <li key={i} className="flex items-start gap-3">
                                             <div className="w-5 h-5 bg-white rounded-full flex items-center justify-center text-[10px] font-bold text-sky-600 shadow-sm border border-sky-100 flex-shrink-0 mt-0.5">
@@ -149,14 +147,14 @@ const AddCardModal = ({ paystackPublicKey, onClose, onSuccess }) => {
                                 metadata={{
                                     custom_fields: [
                                         {
-                                            display_name: "Purpose",
-                                            variable_name: "purpose",
-                                            value: "card_linking"
-                                        }
-                                    ]
+                                            display_name: 'Purpose',
+                                            variable_name: 'purpose',
+                                            value: 'card_linking',
+                                        },
+                                    ],
                                 }}
                             />
-                            
+
                             <button
                                 type="button"
                                 onClick={onClose}

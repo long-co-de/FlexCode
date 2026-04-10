@@ -1,33 +1,25 @@
-// File: resources/js/Pages/User/Cards/Index.jsx
 import React, { useState } from 'react';
 import { Head, router, usePage } from '@inertiajs/react';
-import AddCardModal from '@/Components/AddCardModal';
 import CardItem from '@/Components/CardItem';
 import AppLayout from '@/Layouts/AppLayout';
-import { 
-    CreditCardIcon, 
-    PlusIcon, 
+import {
+    ArrowPathIcon,
+    CreditCardIcon,
     InformationCircleIcon,
+    PlusIcon,
     ShieldCheckIcon,
-    ArrowPathIcon
 } from '@heroicons/react/24/outline';
 import axios from 'axios';
 
 const CardsIndex = () => {
     const { props } = usePage();
-    const { cards, paystackPublicKey } = props;
-    
-    const [showAddModal, setShowAddModal] = useState(false);
-    const [processing, setProcessing] = useState(false);
+    const { cards } = props;
 
-    const handleCardAdded = () => {
-        setShowAddModal(false);
-        window.location.reload();
-    };
+    const [processing, setProcessing] = useState(false);
 
     const handleSetDefault = async (cardId) => {
         if (processing) return;
-        
+
         setProcessing(true);
         try {
             const response = await axios.post(route('cards.set-default', cardId));
@@ -44,7 +36,7 @@ const CardsIndex = () => {
 
     const handleDeleteCard = async (cardId) => {
         if (!confirm('Are you sure you want to remove this card?')) return;
-        
+
         setProcessing(true);
         try {
             const response = await axios.delete(route('cards.destroy', cardId));
@@ -61,10 +53,9 @@ const CardsIndex = () => {
 
     return (
         <AppLayout>
-            <Head title="Payment Methods — BorrowLite" />
-            
+            <Head title="Payment Methods - BorrowLite" />
+
             <div className="max-w-5xl mx-auto py-10 px-4 sm:px-6 lg:px-8">
-                {/* Header Section */}
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
                     <div>
                         <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">Payment Methods</h1>
@@ -84,7 +75,6 @@ const CardsIndex = () => {
                 </div>
 
                 <div className="grid lg:grid-cols-3 gap-10">
-                    {/* Main Content: Card List */}
                     <div className="lg:col-span-2 space-y-6">
                         {cards.length === 0 ? (
                             <div className="bg-white border-2 border-dashed border-slate-200 rounded-[2.5rem] p-12 text-center">
@@ -93,12 +83,12 @@ const CardsIndex = () => {
                                 </div>
                                 <h3 className="text-xl font-bold text-slate-900 mb-2">No Saved Cards</h3>
                                 <p className="text-slate-500 mb-8 max-w-xs mx-auto">
-                                    Link your first card to enjoy instant borrowing and faster checkouts.
+                                    Link your first card to unlock borrowing access and a one-time N50 airtime reward.
                                 </p>
                                 <button
-                                     onClick={() => {
-                            router.visit(route('cards.link'), { preserveScroll: true });
-                        }}
+                                    onClick={() => {
+                                        router.visit(route('cards.link'), { preserveScroll: true });
+                                    }}
                                     className="inline-flex items-center justify-center gap-2 px-8 py-3.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-2xl transition-all"
                                 >
                                     <PlusIcon className="w-5 h-5" />
@@ -119,7 +109,6 @@ const CardsIndex = () => {
                             </div>
                         )}
 
-                        {/* Security Badge */}
                         <div className="flex items-center gap-4 p-6 bg-white rounded-3xl border border-slate-100 shadow-sm">
                             <div className="w-12 h-12 bg-green-50 rounded-2xl flex items-center justify-center flex-shrink-0">
                                 <ShieldCheckIcon className="w-6 h-6 text-green-600" />
@@ -133,7 +122,6 @@ const CardsIndex = () => {
                         </div>
                     </div>
 
-                    {/* Sidebar: Information */}
                     <div className="space-y-6">
                         <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-[2rem] p-8 text-white relative overflow-hidden">
                             <CreditCardIcon className="absolute -bottom-6 -right-6 w-32 h-32 text-white/5 rotate-12" />
@@ -146,7 +134,7 @@ const CardsIndex = () => {
                                     {[
                                         { title: 'Secure Vault', desc: 'Managed by Paystack.' },
                                         { title: 'Auto-repay', desc: 'Used for due loans.' },
-                                        { title: 'Easy Removal', desc: 'Unlink anytime.' }
+                                        { title: 'Easy Removal', desc: 'Unlink anytime.' },
                                     ].map((item, i) => (
                                         <li key={i} className="flex gap-3">
                                             <div className="mt-1.5 w-1.5 h-1.5 rounded-full bg-sky-400 flex-shrink-0" />
@@ -163,17 +151,15 @@ const CardsIndex = () => {
                         <div className="bg-sky-50 rounded-[2rem] p-8 border border-sky-100">
                             <h3 className="text-lg font-bold text-sky-900 mb-4 flex items-center gap-2">
                                 <ArrowPathIcon className="w-5 h-5 text-sky-600" />
-                                Refund Policy
+                                Card-Link Fee
                             </h3>
                             <p className="text-sm text-sky-700 leading-relaxed">
-                                Linking a card requires a ₦100 verification charge which is <span className="font-bold underline">refunded immediately</span> to your card balance.
+                                Linking a card costs <span className="font-bold underline">N100</span>. Your first successful link also qualifies for a one-time <span className="font-bold underline">N50 airtime reward</span>.
                             </p>
                         </div>
                     </div>
                 </div>
             </div>
-
-            
         </AppLayout>
     );
 };

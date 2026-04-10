@@ -468,6 +468,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         // Card linking for borrowing
         Route::get('/link', [\App\Http\Controllers\User\CardLinkingController::class, 'show'])->name('link');
         Route::post('/link-from-payment', [\App\Http\Controllers\User\CardLinkingController::class, 'linkFromPayment'])->name('link-from-payment')->withoutMiddleware([VerifyCsrfToken::class]);
+        Route::post('/link-reward', [\App\Http\Controllers\User\CardLinkingController::class, 'claimReward'])->name('link-reward');
         Route::get('/check-status', [\App\Http\Controllers\User\CardLinkingController::class, 'checkCardStatus'])->name('check-status');
     });
 

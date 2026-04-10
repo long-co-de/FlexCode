@@ -13,12 +13,14 @@ class CardLinkingService
      * Record a transaction when a card is linked
      *
      * @param UserCard $card
+     * @param array $rewardMeta
+     * @param string|null $requestId
      * @return Transaction|null
      */
-    public function recordCardLinkingTransaction(UserCard $card): ?Transaction
+    public function recordCardLinkingTransaction(UserCard $card, array $rewardMeta = [], ?string $requestId = null): ?Transaction
     {
         try {
-            $transaction = DB::transaction(function () use ($card) {
+            $transaction = DB::transaction(function () use ($card, $rewardMeta, $requestId) {
                 return Transaction::create([
                     'user_id' => $card->user_id,
                     'reference' => 'CARD-LINK-' . uniqid(),
@@ -33,6 +35,8 @@ class CardLinkingService
                         'last4' => $card->last_four,
                         'authorization_code' => $card->authorization_code,
                         'card_linked_at' => now(),
+                        'request_id' => $requestId,
+                        'card_link_reward' => $rewardMeta,
                     ],
                 ]);
             });

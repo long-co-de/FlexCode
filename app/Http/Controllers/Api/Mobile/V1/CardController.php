@@ -91,15 +91,20 @@ class CardController extends Controller
         return $this->success([
             'reference' => $reference,
             'status' => 'pending',
+            'verification_fee' => [
+                'amount' => 100,
+                'is_refunded' => false,
+            ],
             'checkout' => [
                 'authorization_url' => $payment['data']['authorization_url'] ?? null,
                 'access_code' => $payment['data']['access_code'] ?? null,
             ],
-        ], 'Card linking initialized successfully.', 201);
+        ], 'Card linking initialized successfully. A N100 card-linking fee will be charged.', 201);
     }
 
     public function linkStatus(Request $request, string $reference, PaystackService $paystackService, CardLinkingController $cardLinkingController)
     {
+        $linkPayload = [];
         $initTransaction = Transaction::where('reference', $reference)
             ->where('user_id', $request->user()->id)
             ->where('type', 'card_linking_init')
@@ -143,7 +148,35 @@ class CardController extends Controller
             'reference' => $reference,
             'status' => $initTransaction->status,
             'card' => $activeCard ? new UserCardResource($activeCard) : null,
+            'reward' => $linkPayload['data']['reward'] ?? null,
+            'verification_fee' => $linkPayload['data']['verification_fee'] ?? [
+                'amount' => 100,
+                'is_refunded' => false,
+            ],
         ], 'Card link status fetched successfully.');
+    }
+
+    public function claimReward(Request $request, CardLinkingController $cardLinkingController)
+    {
+        $rewardRequest = Request::create('/api/mobile/v1/cards/link/reward', 'POST', $request->only([
+            'network_id',
+            'request_id',
+        ]));
+        $rewardRequest->setUserResolver(fn () => $request->user());
+
+        $response = $cardLinkingController->claimReward($rewardRequest);
+        $payload = $response->getData(true);
+
+        if (($payload['success'] ?? false) !== true) {
+            return $this->error(
+                $payload['message'] ?? 'Unable to send airtime reward.',
+                'CARD_LINK_REWARD_FAILED',
+                $response->getStatusCode(),
+                ['data' => $payload['data'] ?? null]
+            );
+        }
+
+        return $this->success($payload['data'] ?? null, $payload['message'] ?? 'Reward delivered successfully.');
     }
 
     public function setDefault(Request $request, UserCard $card, LegacyCardController $controller)

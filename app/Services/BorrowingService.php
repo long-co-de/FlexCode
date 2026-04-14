@@ -294,12 +294,14 @@ class BorrowingService
     {
         $vat = 100;
         $fee = 100;
-        $totalBorrowAmount = $amount + $vat + $fee;
+        $extraCharges = $vat + $fee;
 
-        return $this->processBorrowing($user, 'electricity', $totalBorrowAmount, [
+        return $this->processBorrowing($user, 'electricity', $amount, [
             'meter' => $meter,
             'provider' => $provider,
             'amount' => $amount,
+            'validation_amount' => $amount,
+            'extra_charges' => $extraCharges,
             'vat' => $vat,
             'fee' => $fee,
             'meter_type' => $meterType,
@@ -330,9 +332,18 @@ class BorrowingService
                 throw new \Exception("Borrowing for {$type} is currently unavailable");
             }
 
-            if (! $borrowSetting->isWithinLimit($amount)) {
+            $amountForLimits = (float) ($details['validation_amount'] ?? $amount);
+            $isFirstBorrowForService = ! $user->borrowings()->where('type', $type)->exists();
+
+            if ($isFirstBorrowForService && $type === 'electricity') {
+                if ($amountForLimits < (float) $borrowSetting->first_time_min_amount) {
+                    throw new \Exception(
+                        "First-time electricity borrowing must be at least NGN {$borrowSetting->first_time_min_amount}"
+                    );
+                }
+            } elseif (! $borrowSetting->isWithinLimit($amountForLimits)) {
                 throw new \Exception(
-                    "Borrow amount must be between ₦{$borrowSetting->min_amount} and ₦{$borrowSetting->max_amount}"
+                    "Borrow amount must be between NGN {$borrowSetting->min_amount} and NGN {$borrowSetting->max_amount}"
                 );
             }
 
@@ -347,7 +358,9 @@ class BorrowingService
                 $dueDays = 7;
             }
 
-            $totalAmount = $amount + (($amount * $interestRate) / 100);
+            $extraCharges = (float) ($details['extra_charges'] ?? 0);
+            $amountWithCharges = $amount + $extraCharges;
+            $totalAmount = $amountWithCharges + (($amountWithCharges * $interestRate) / 100);
             $borrowing = Borrowing::create([
                 'user_id' => $user->id,
                 'reference' => 'BOR' . Str::random(10),
@@ -505,3 +518,4 @@ class BorrowingService
 
 
 }
+

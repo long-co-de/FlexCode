@@ -43,6 +43,9 @@ const Index = ({ borrowSettings }) => {
                                     Min - Max Amount
                                 </th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    First-time Rules
+                                </th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                     Interest Rate
                                 </th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -70,7 +73,15 @@ const Index = ({ borrowSettings }) => {
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap">
                                             <div className="text-sm text-gray-700">
-                                                ₦{setting.min_amount?.toLocaleString()} - ₦{setting.max_amount?.toLocaleString()}
+                                                NGN {Number(setting.min_amount ?? 0).toLocaleString()} - NGN {Number(setting.max_amount ?? 0).toLocaleString()}
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap">
+                                            <div className="text-sm text-gray-700">
+                                                Min: NGN {Number(setting.first_time_min_amount ?? 0).toLocaleString()}
+                                            </div>
+                                            <div className="text-xs text-gray-500">
+                                                Credit: NGN {Number(setting.first_time_credit_limit ?? 0).toLocaleString()}
                                             </div>
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap">
@@ -119,7 +130,7 @@ const Index = ({ borrowSettings }) => {
                                 ))
                             ) : (
                                 <tr>
-                                    <td colSpan="7" className="px-6 py-8 text-center text-gray-500">
+                                    <td colSpan="8" className="px-6 py-8 text-center text-gray-500">
                                         No borrow settings found. Create one to get started.
                                     </td>
                                 </tr>
@@ -133,6 +144,7 @@ const Index = ({ borrowSettings }) => {
                     <h3 className="font-semibold text-blue-900 mb-3">About Borrow Settings</h3>
                     <ul className="space-y-2 text-sm text-blue-800">
                         <li>• <strong>Min/Max Amount:</strong> The range users can borrow for each service type</li>
+                        <li>• <strong>First-time Rules:</strong> Minimum request amount and first-time credit limit per service</li>
                         <li>• <strong>Interest Rate:</strong> The percentage charged on borrowed amount (base rate)</li>
                         <li>• <strong>Good Credit Rate:</strong> Lower interest rate for users with credit score ≥ 80</li>
                         <li>• <strong>Due Days:</strong> Number of days users have to repay the borrowed amount</li>
@@ -145,3 +157,6 @@ const Index = ({ borrowSettings }) => {
 };
 
 export default Index;
+
+
+

@@ -87,6 +87,8 @@ class BorrowingDataController extends AtomicController
                 'data' => $borrowSetting ? [
                     'min_amount' => (float) $borrowSetting->min_amount,
                     'max_amount' => (float) $borrowSetting->max_amount,
+                    'first_time_min_amount' => (float) $borrowSetting->first_time_min_amount,
+                    'first_time_credit_limit' => (float) $borrowSetting->first_time_credit_limit,
                     'base_interest_rate' => $borrowSetting->base_interest_rate,
                     'good_credit_interest_rate' => $borrowSetting->good_credit_interest_rate,
                     'due_days' => $borrowSetting->due_days,

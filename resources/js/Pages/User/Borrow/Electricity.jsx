@@ -36,6 +36,7 @@ const Electricity = ({ auth, providers, eligibility, activeBorrowings, borrowSet
     }, [useBNPL, hasActiveCard]);
 
     const borrowSettings_ = borrowSettings?.electricity || {};
+    const minimumBorrowAmount = borrowSettings_?.effective_min_amount || borrowSettings_?.min_amount || 1000;
 
     const getInterestRate = () => {
         if (data.duration === 3) {
@@ -379,7 +380,7 @@ const Electricity = ({ auth, providers, eligibility, activeBorrowings, borrowSet
                                         <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-black text-xl">₦</div>
                                     </div>
                                     <div className="flex justify-between items-center px-2">
-                                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Min: ₦{borrowSettings_?.min_amount || 1000}</span>
+                                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Min: ₦{minimumBorrowAmount}</span>
                                         <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Max: ₦{maxBorrowableAmount.toLocaleString()}</span>
                                     </div>
                                 </div>
@@ -428,7 +429,7 @@ const Electricity = ({ auth, providers, eligibility, activeBorrowings, borrowSet
                                     ) : (
                                         <button
                                             onClick={handleSubmit}
-                                            disabled={!meterVerified || !data.amount || parseFloat(data.amount) < (borrowSettings_?.min_amount || 1000)}
+                                            disabled={!meterVerified || !data.amount || parseFloat(data.amount) < minimumBorrowAmount}
                                             className="w-full py-5 rounded-2xl bg-sky-500 text-white font-black uppercase tracking-[0.2em] shadow-xl shadow-sky-500/20 hover:bg-sky-400 transition-all flex items-center justify-center gap-3 disabled:opacity-50"
                                         >
                                             Confirm Borrow <FaArrowRight className="text-xs" />

@@ -38,6 +38,7 @@ class DatabaseSeeder extends Seeder
             NetworkSeeder::class,
             CableProviderSeeder::class,
             ElectricityProviderSeeder::class,
+            BorrowSettingSeeder::class,
             CreditEligibilitySettingSeeder::class,
         ]);
     }

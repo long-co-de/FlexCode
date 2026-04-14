@@ -10,6 +10,8 @@ class BorrowSetting extends Model
         'service_type',
         'min_amount',
         'max_amount',
+        'first_time_min_amount',
+        'first_time_credit_limit',
         'base_interest_rate',
         'good_credit_interest_rate',
         'due_days',
@@ -19,6 +21,8 @@ class BorrowSetting extends Model
     protected $casts = [
         'min_amount' => 'decimal:2',
         'max_amount' => 'decimal:2',
+        'first_time_min_amount' => 'decimal:2',
+        'first_time_credit_limit' => 'decimal:2',
         'is_active' => 'boolean',
     ];
 

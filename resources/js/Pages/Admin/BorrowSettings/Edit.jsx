@@ -6,6 +6,8 @@ const Edit = ({ borrowSetting }) => {
     const { data, setData, put, processing, errors } = useForm({
         min_amount: borrowSetting.min_amount,
         max_amount: borrowSetting.max_amount,
+        first_time_min_amount: borrowSetting.first_time_min_amount ?? 100,
+        first_time_credit_limit: borrowSetting.first_time_credit_limit ?? 100,
         base_interest_rate: borrowSetting.base_interest_rate,
         good_credit_interest_rate: borrowSetting.good_credit_interest_rate,
         due_days: borrowSetting.due_days,
@@ -97,6 +99,38 @@ const Edit = ({ borrowSetting }) => {
                             {errors.max_amount && (
                                 <p className="text-red-600 text-sm mt-1">{errors.max_amount}</p>
                             )}
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    First-time Minimum (â‚¦) *
+                                </label>
+                                <input
+                                    type="number"
+                                    value={data.first_time_min_amount}
+                                    onChange={(e) => setData('first_time_min_amount', e.target.value)}
+                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                />
+                                {errors.first_time_min_amount && (
+                                    <p className="text-red-600 text-sm mt-1">{errors.first_time_min_amount}</p>
+                                )}
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    First-time Credit Limit (â‚¦) *
+                                </label>
+                                <input
+                                    type="number"
+                                    value={data.first_time_credit_limit}
+                                    onChange={(e) => setData('first_time_credit_limit', e.target.value)}
+                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                />
+                                {errors.first_time_credit_limit && (
+                                    <p className="text-red-600 text-sm mt-1">{errors.first_time_credit_limit}</p>
+                                )}
+                            </div>
                         </div>
 
                         {/* Interest Rates */}

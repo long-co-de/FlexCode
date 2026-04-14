@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Mobile\V1;
 
 use App\Http\Resources\Mobile\V1\BorrowingResource;
 use App\Models\Borrowing;
+use App\Models\BorrowSetting;
 use App\Models\DataPlan;
 use App\Models\ElectricityProvider;
 use App\Models\Network;
@@ -72,10 +73,17 @@ class BorrowingController extends Controller
 
     public function borrowAirtime(Request $request)
     {
+        $borrowSetting = BorrowSetting::where('service_type', 'airtime')
+            ->where('is_active', true)
+            ->first();
+        if (! $borrowSetting) {
+            return $this->error('Airtime borrowing is currently unavailable.', 'BORROWING_UNAVAILABLE', 400);
+        }
+
         $request->validate([
             'phone_number' => 'required|string|regex:/^[0-9]{11}$/',
             'network_id' => 'required|exists:networks,id',
-            'amount' => 'required|numeric|min:50',
+            'amount' => "required|numeric|min:{$borrowSetting->min_amount}|max:{$borrowSetting->max_amount}",
             'duration' => 'nullable|in:3,7',
         ]);
 
@@ -122,10 +130,17 @@ class BorrowingController extends Controller
 
     public function borrowElectricity(Request $request)
     {
+        $borrowSetting = BorrowSetting::where('service_type', 'electricity')
+            ->where('is_active', true)
+            ->first();
+        if (! $borrowSetting) {
+            return $this->error('Electricity borrowing is currently unavailable.', 'BORROWING_UNAVAILABLE', 400);
+        }
+
         $request->validate([
             'meter_number' => 'required|string',
             'provider_id' => 'required|exists:electricity_providers,id',
-            'amount' => 'required|numeric|min:500',
+            'amount' => "required|numeric|min:{$borrowSetting->min_amount}|max:{$borrowSetting->max_amount}",
             'meter_type' => 'required|in:prepaid,postpaid',
             'duration' => 'nullable|in:3,7',
         ]);

@@ -27,11 +27,13 @@ class BorrowSettingController extends Controller
     {
         $validated = $request->validate([
             'service_type' => 'required|string|unique:borrow_settings,service_type|in:airtime,data,electricity,cable',
-            'min_amount' => 'sometimes',
-            'max_amount' => 'sometimes',
-            'base_interest_rate' => 'sometimes',
-            'good_credit_interest_rate' => 'sometimes',
-            'due_days' => 'sometimes',
+            'min_amount' => 'required|numeric|min:0',
+            'max_amount' => 'required|numeric|gt:min_amount',
+            'first_time_min_amount' => 'required|numeric|min:0',
+            'first_time_credit_limit' => 'required|numeric|min:0',
+            'base_interest_rate' => 'required|numeric|min:0',
+            'good_credit_interest_rate' => 'required|numeric|min:0',
+            'due_days' => 'required|integer|min:1',
             'is_active' => 'sometimes|boolean',
         ]);
 
@@ -51,11 +53,13 @@ class BorrowSettingController extends Controller
     public function update(Request $request, BorrowSetting $borrowSetting)
     {
         $validated = $request->validate([
-            'min_amount' => 'sometimes',
-            'max_amount' => 'sometimes',
-            'base_interest_rate' => 'sometimes',
-            'good_credit_interest_rate' => 'sometimes',
-            'due_days' => 'sometimes',
+            'min_amount' => 'required|numeric|min:0',
+            'max_amount' => 'required|numeric|gt:min_amount',
+            'first_time_min_amount' => 'required|numeric|min:0',
+            'first_time_credit_limit' => 'required|numeric|min:0',
+            'base_interest_rate' => 'required|numeric|min:0',
+            'good_credit_interest_rate' => 'required|numeric|min:0',
+            'due_days' => 'required|integer|min:1',
             'is_active' => 'sometimes|boolean',
         ]);
 

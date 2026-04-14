@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Borrowing;
+use App\Models\BorrowSetting;
 use App\Models\CreditEligibilitySetting;
 use App\Models\Transaction;
 use App\Models\User;
@@ -270,20 +271,22 @@ class AdvancedCreditScoringService
      */
     public function calculateCreditLimit(User $user, int $creditScore, ?string $serviceType = null): float
     {
-        // Check if user has any previous borrowings
-        $hasBorrowedBefore = $user->borrowings()->count() > 0;
-
-        // If it's the first borrowing, the limit is strictly ₦100
-        if (! $hasBorrowedBefore) {
-            // Check if user has active card - minimum ₦100 eligibility for first timers
-            $hasActiveCard = $user->cards()->where('is_active', true)->exists();
-
-            return $hasActiveCard ? 100 : 0;
+        // Check if user has active card - minimum eligibility
+        $hasActiveCard = $user->cards()->where('is_active', true)->exists();
+        if (! $hasActiveCard) {
+            return 0;
         }
 
-        // Check if user has active card - minimum ₦500 eligibility
-        $hasActiveCard = $user->cards()->where('is_active', true)->exists();
-        $baseCardLimit = $hasActiveCard ? 500 : 0;
+        $baseCardLimit = 500;
+
+        if ($serviceType) {
+            $borrowSetting = BorrowSetting::getByServiceType($serviceType);
+            $hasBorrowedThisService = $user->borrowings()->where('type', $serviceType)->exists();
+
+            if (! $hasBorrowedThisService && $borrowSetting) {
+                return (float) $borrowSetting->first_time_credit_limit;
+            }
+        }
 
         // Try to get settings from database if service type provided
         if ($serviceType) {
@@ -293,7 +296,7 @@ class AdvancedCreditScoringService
 
                 if ($baseLimit === 0) {
                     // If settings-based limit is 0, use minimum card-linking eligibility
-                    return $hasActiveCard ? 500 : 0;
+                    return $baseCardLimit;
                 }
 
                 // Adjust based on spending behavior
@@ -441,3 +444,4 @@ class AdvancedCreditScoringService
         ];
     }
 }
+

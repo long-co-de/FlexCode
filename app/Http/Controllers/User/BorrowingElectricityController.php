@@ -53,6 +53,7 @@ class BorrowingElectricityController extends AtomicController
 
         // Get borrow settings
         $borrowSetting = BorrowSetting::where('service_type', 'electricity')->first();
+        $isFirstTimeBorrow = ! $user->borrowings()->where('type', 'electricity')->exists();
 
         // Prepare eligibility response with rejection reason and action
         $eligibilityResponse = [
@@ -86,6 +87,12 @@ class BorrowingElectricityController extends AtomicController
                 'electricity' => $borrowSetting ? [
                     'min_amount' => (float) $borrowSetting->min_amount,
                     'max_amount' => (float) $borrowSetting->max_amount,
+                    'first_time_min_amount' => (float) $borrowSetting->first_time_min_amount,
+                    'first_time_credit_limit' => (float) $borrowSetting->first_time_credit_limit,
+                    'is_first_time_borrow' => $isFirstTimeBorrow,
+                    'effective_min_amount' => $isFirstTimeBorrow
+                        ? (float) $borrowSetting->first_time_min_amount
+                        : (float) $borrowSetting->min_amount,
                     'base_interest_rate' => $borrowSetting->base_interest_rate,
                     'good_credit_interest_rate' => $borrowSetting->good_credit_interest_rate,
                     'due_days' => $borrowSetting->due_days,
@@ -138,11 +145,19 @@ class BorrowingElectricityController extends AtomicController
      */
     public function borrow(Request $request)
     {
+        $borrowSetting = BorrowSetting::where('service_type', 'electricity')
+            ->where('is_active', true)
+            ->first();
+
+        if (! $borrowSetting) {
+            return redirect()->back()->with('error', 'Electricity borrowing is currently unavailable.');
+        }
+
         $request->validate([
             'electricity_provider_id' => 'required|exists:electricity_providers,id',
             'meter_number' => 'required|string',
             'meter_type' => 'required|string|in:prepaid,postpaid',
-            'amount' => 'required|numeric|min:1000|max:20000',
+            'amount' => "required|numeric|min:{$borrowSetting->min_amount}|max:{$borrowSetting->max_amount}",
             'duration' => 'nullable|integer|in:3,7',
             'customer_name' => 'required|string',
             'address' => 'required|string',

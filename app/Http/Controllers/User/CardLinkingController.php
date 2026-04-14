@@ -34,8 +34,11 @@ class CardLinkingController extends AtomicController
     public function show(Request $request)
     {
         $user = Auth::user();
+        $activeCard = $user->cards()->where('is_active', true)->latest()->first();
+        $rewardTransaction = $this->getLatestRewardEligibleCardLinkTransaction($user->id);
+        $reward = $rewardTransaction ? $this->formatRewardResponse($rewardTransaction) : null;
 
-        if ($user->cards()->where('is_active', true)->exists()) {
+        if ($activeCard && ! $this->shouldKeepUserOnLinkPage($reward)) {
             return redirect()->route('cards.index')
                 ->with('info', 'You already have an active linked card.');
         }
@@ -48,6 +51,8 @@ class CardLinkingController extends AtomicController
                 ->orderBy('name')
                 ->get(['id', 'name', 'code', 'logo']),
             'returnUrl' => $request->query('return_to', route('borrow.airtime')),
+            'initialCard' => $activeCard ? $activeCard->only(['id', 'card_type', 'last_four', 'bank', 'is_default', 'is_active', 'is_expired', 'expires_at']) : null,
+            'initialReward' => $reward,
         ]);
     }
 
@@ -590,6 +595,19 @@ class CardLinkingController extends AtomicController
             'reward_reference' => $reward['reward_reference'] ?? null,
             'last_error' => $reward['last_error'] ?? null,
         ];
+    }
+
+    protected function shouldKeepUserOnLinkPage(?array $reward): bool
+    {
+        if (! $reward || ! ($reward['eligible'] ?? false)) {
+            return false;
+        }
+
+        return in_array($reward['status'] ?? null, [
+            'pending_network_selection',
+            'failed',
+            'blocked_missing_phone',
+        ], true);
     }
 
     /**

@@ -97,7 +97,7 @@ const Index = ({ settings }) => {
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm space-x-2">
                                             <Link
-                                                href={route('admin.credit-eligibility-settings.edit', setting.id)}
+                                                href={route('admin.credit-eligibility-settings.edit', { credit_eligibility_setting: setting.id })}
                                                 className="text-blue-600 hover:text-blue-900 font-medium"
                                             >
                                                 Edit

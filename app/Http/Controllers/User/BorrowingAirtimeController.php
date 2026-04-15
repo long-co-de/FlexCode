@@ -53,6 +53,7 @@ class BorrowingAirtimeController extends AtomicController
 
         // Get borrow settings
         $borrowSetting = BorrowSetting::where('service_type', 'airtime')->first();
+        $isFirstTimeBorrow = ! $user->borrowings()->where('type', 'airtime')->exists();
 
         // Prepare eligibility response with rejection reason and action
         $eligibilityResponse = [
@@ -88,6 +89,10 @@ class BorrowingAirtimeController extends AtomicController
                     'max_amount' => (float) $borrowSetting->max_amount,
                     'first_time_min_amount' => (float) $borrowSetting->first_time_min_amount,
                     'first_time_credit_limit' => (float) $borrowSetting->first_time_credit_limit,
+                    'is_first_time_borrow' => $isFirstTimeBorrow,
+                    'effective_min_amount' => $isFirstTimeBorrow
+                        ? (float) $borrowSetting->first_time_min_amount
+                        : (float) $borrowSetting->min_amount,
                     'base_interest_rate' => $borrowSetting->base_interest_rate,
                     'good_credit_interest_rate' => $borrowSetting->good_credit_interest_rate,
                     'due_days' => $borrowSetting->due_days,
@@ -109,19 +114,21 @@ class BorrowingAirtimeController extends AtomicController
             return redirect()->back()->with('error', 'Airtime borrowing is currently unavailable.');
         }
 
+        $user = Auth::user();
+        $isFirstTimeBorrow = ! $user->borrowings()->where('type', 'airtime')->exists();
+        $minAmount = $isFirstTimeBorrow ? (float) $borrowSetting->first_time_min_amount : (float) $borrowSetting->min_amount;
+        $maxAmount = (float) $borrowSetting->max_amount;
+
         $request->validate([
             'network_id' => 'required|exists:networks,id',
             'phone_number' => 'required|string|regex:/^[0-9]{11}$/',
-            'amount' => "required|numeric|min:{$borrowSetting->min_amount}|max:{$borrowSetting->max_amount}",
+            'amount' => "required|numeric|min:{$minAmount}|max:{$maxAmount}",
             'airtime_type' => 'required|string|in:VTU,AWOOF,SHARE,SELL',
-            'duration' => 'nullable|integer|in:3,7',
             'save_as_beneficiary' => 'nullable|boolean',
             'beneficiary_name' => 'nullable|string|max:255',
             'pin' => 'required|string|size:4',
             'request_id' => 'nullable|string',
         ]);
-
-        $user = Auth::user();
 
         // Rate limiting
         if ($this->isRateLimited($user->id, 'borrow_airtime')) {
@@ -149,13 +156,13 @@ class BorrowingAirtimeController extends AtomicController
 
         try {
             // Process borrowing atomically
-            $borrowing = $this->processAtomicTransaction($user->id, 0, function ($lockedUser) use ($request, $network) {
+            $borrowing = $this->processAtomicTransaction($user->id, 0, function ($lockedUser) use ($request, $network, $borrowSetting) {
                 return $this->borrowingService->borrowAirtime(
                     $lockedUser,
                     $request->phone_number,
                     $request->amount,
                     $network->name,
-                    $request->duration ?? 7
+                    (int) $borrowSetting->due_days
                 );
             });
 

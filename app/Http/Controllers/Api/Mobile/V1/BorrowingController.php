@@ -84,7 +84,6 @@ class BorrowingController extends Controller
             'phone_number' => 'required|string|regex:/^[0-9]{11}$/',
             'network_id' => 'required|exists:networks,id',
             'amount' => "required|numeric|min:{$borrowSetting->min_amount}|max:{$borrowSetting->max_amount}",
-            'duration' => 'nullable|in:3,7',
         ]);
 
         try {
@@ -94,7 +93,7 @@ class BorrowingController extends Controller
                 $request->phone_number,
                 $request->amount,
                 $network->code,
-                (int) $request->input('duration', 7)
+                (int) $borrowSetting->due_days
             );
 
             return $this->success(new BorrowingResource($borrowing->load('repayments')), 'Airtime borrowing created successfully.', 201);
@@ -105,21 +104,34 @@ class BorrowingController extends Controller
 
     public function borrowData(Request $request)
     {
+        $borrowSetting = BorrowSetting::where('service_type', 'data')
+            ->where('is_active', true)
+            ->first();
+        if (! $borrowSetting) {
+            return $this->error('Data borrowing is currently unavailable.', 'BORROWING_UNAVAILABLE', 400);
+        }
+
         $request->validate([
             'phone_number' => 'required|string|regex:/^[0-9]{11}$/',
             'plan_id' => 'required|exists:data_plans,id',
-            'duration' => 'nullable|in:3,7',
         ]);
 
         try {
             $plan = DataPlan::with('network')->findOrFail($request->plan_id);
+            $planAmount = (float) $plan->selling_price;
+            if ($planAmount < (float) $borrowSetting->min_amount) {
+                return $this->error("Selected plan amount must be at least NGN {$borrowSetting->min_amount}.", 'INVALID_AMOUNT', 422);
+            }
+            if ((float) $borrowSetting->max_amount > 0 && $planAmount > (float) $borrowSetting->max_amount) {
+                return $this->error("Selected plan amount must not exceed NGN {$borrowSetting->max_amount}.", 'INVALID_AMOUNT', 422);
+            }
             $borrowing = $this->borrowingService->borrowData(
                 $request->user(),
                 $request->phone_number,
                 $plan->dataplan_id ?? $plan->code,
                 $plan->selling_price,
                 $plan->network->code,
-                (int) $request->input('duration', 7)
+                (int) $borrowSetting->due_days
             );
 
             return $this->success(new BorrowingResource($borrowing->load('repayments')), 'Data borrowing created successfully.', 201);
@@ -142,7 +154,6 @@ class BorrowingController extends Controller
             'provider_id' => 'required|exists:electricity_providers,id',
             'amount' => "required|numeric|min:{$borrowSetting->min_amount}|max:{$borrowSetting->max_amount}",
             'meter_type' => 'required|in:prepaid,postpaid',
-            'duration' => 'nullable|in:3,7',
         ]);
 
         try {
@@ -153,7 +164,7 @@ class BorrowingController extends Controller
                 $request->amount,
                 $provider->code,
                 $request->meter_type,
-                (int) $request->input('duration', 7)
+                (int) $borrowSetting->due_days
             );
 
             return $this->success(new BorrowingResource($borrowing->load('repayments')), 'Electricity borrowing created successfully.', 201);

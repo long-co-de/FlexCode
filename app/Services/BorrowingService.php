@@ -335,27 +335,31 @@ class BorrowingService
             $amountForLimits = (float) ($details['validation_amount'] ?? $amount);
             $isFirstBorrowForService = ! $user->borrowings()->where('type', $type)->exists();
 
-            if ($isFirstBorrowForService && $type === 'electricity') {
-                if ($amountForLimits < (float) $borrowSetting->first_time_min_amount) {
-                    throw new \Exception(
-                        "First-time electricity borrowing must be at least NGN {$borrowSetting->first_time_min_amount}"
-                    );
+            $minLimit = (float) ($borrowSetting->min_amount ?? 0);
+            if ($isFirstBorrowForService && $borrowSetting->first_time_min_amount !== null) {
+                $minLimit = (float) $borrowSetting->first_time_min_amount;
+            }
+            $maxLimit = (float) ($borrowSetting->max_amount ?? 0);
+
+            if ($amountForLimits < $minLimit || ($maxLimit > 0 && $amountForLimits > $maxLimit)) {
+                if ($isFirstBorrowForService && $borrowSetting->first_time_min_amount !== null) {
+                    throw new \Exception("First-time {$type} borrowing must be at least NGN {$minLimit}");
                 }
-            } elseif (! $borrowSetting->isWithinLimit($amountForLimits)) {
+
                 throw new \Exception(
                     "Borrow amount must be between NGN {$borrowSetting->min_amount} and NGN {$borrowSetting->max_amount}"
                 );
             }
 
             // Create borrowing record
-            // Handle custom interest rates based on duration (3 days: 10%, 7 days: 13%)
-            if ($duration == 3) {
-                $interestRate = 10;
-                $dueDays = 3;
-            } else {
-                // Default to 7 days if not 3
-                $interestRate = 13;
-                $dueDays = 7;
+            $interestRate = (float) $this->getInterestRate((int) $eligibility->credit_score, $borrowSetting);
+            $dueDays = (int) ($borrowSetting->due_days ?? 0);
+            if ($dueDays <= 0) {
+                $dueDays = (int) ($duration ?? 7);
+            }
+            // Fallback for legacy environments where interest rates were duration-based
+            if ($interestRate <= 0) {
+                $interestRate = ((int) $duration === 3) ? 10 : 13;
             }
 
             $extraCharges = (float) ($details['extra_charges'] ?? 0);
@@ -409,9 +413,9 @@ class BorrowingService
         return $this->paymentService->processBorrowingRepayment($borrowing);
     }
 
-    private function getInterestRate(User $user, BorrowSetting $setting)
+    private function getInterestRate(int $creditScore, BorrowSetting $setting)
     {
-        if ($user->borrowingEligibility && $user->borrowingEligibility->credit_score >= 80) {
+        if ($creditScore >= 80) {
             return $setting->good_credit_interest_rate;
         }
 

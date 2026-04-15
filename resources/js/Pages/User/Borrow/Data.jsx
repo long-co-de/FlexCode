@@ -30,17 +30,23 @@ const Data = ({ auth, networks, eligibility, activeBorrowings, borrowSettings, h
         pin: '',
         use_bnpl: true,
         beneficiary_id: '',
-        duration: 7,
     });
 
     const borrowSettings_ = borrowSettings?.data || {};
+    const dueDays = Number(borrowSettings_?.due_days ?? 7);
+    const minimumBorrowAmount = borrowSettings_?.effective_min_amount || borrowSettings_?.min_amount || 0;
     const plans = selectedNetwork?.data_plans || [];
 
     const getInterestRate = () => {
-        if (data.duration === 3) {
-            return 10;
+        const baseRate = Number(borrowSettings_?.base_interest_rate ?? 13);
+        const goodRate = Number(borrowSettings_?.good_credit_interest_rate ?? baseRate);
+        const score = Number(eligibility?.credit_score ?? 0);
+
+        if (score >= 80) {
+            return Number.isFinite(goodRate) ? goodRate : baseRate;
         }
-        return 13;
+
+        return Number.isFinite(baseRate) ? baseRate : 13;
     };
 
     const calculateTotalRepayment = (amount) => {
@@ -426,35 +432,9 @@ const Data = ({ auth, networks, eligibility, activeBorrowings, borrowSettings, h
                                             {errors.phone_number && <p className="text-rose-500 text-xs font-bold ml-2">{errors.phone_number}</p>}
                                         </div>
 
-                                        {/* Borrow Duration */}
-                                        <div className="space-y-4">
-                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Borrow Duration</label>
-                                            <div className="grid grid-cols-2 gap-4">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setData('duration', 3)}
-                                                    className={`h-20 rounded-2xl border-2 transition-all p-4 flex flex-col justify-center ${
-                                                        data.duration === 3 
-                                                        ? 'border-indigo-600 bg-indigo-50/50' 
-                                                        : 'border-slate-100 bg-slate-50/50 hover:bg-slate-50'
-                                                    }`}
-                                                >
-                                                    <span className={`text-sm font-black ${data.duration === 3 ? 'text-indigo-600' : 'text-slate-600'}`}>3 Days</span>
-                                                    <span className={`text-[10px] font-bold ${data.duration === 3 ? 'text-indigo-400' : 'text-slate-400'}`}>10% Interest</span>
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setData('duration', 7)}
-                                                    className={`h-20 rounded-2xl border-2 transition-all p-4 flex flex-col justify-center ${
-                                                        data.duration === 7 
-                                                        ? 'border-indigo-600 bg-indigo-50/50' 
-                                                        : 'border-slate-100 bg-slate-50/50 hover:bg-slate-50'
-                                                    }`}
-                                                >
-                                                    <span className={`text-sm font-black ${data.duration === 7 ? 'text-indigo-600' : 'text-slate-600'}`}>7 Days</span>
-                                                    <span className={`text-[10px] font-bold ${data.duration === 7 ? 'text-indigo-400' : 'text-slate-400'}`}>13% Interest</span>
-                                                </button>
-                                            </div>
+                                        <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-between">
+                                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Repayment Period</span>
+                                            <span className="text-xs font-black text-slate-700">{dueDays} days</span>
                                         </div>
 
                                         {/* Repayment Summary */}
@@ -463,7 +443,7 @@ const Data = ({ auth, networks, eligibility, activeBorrowings, borrowSettings, h
                                                 <span className="text-slate-400 text-xs font-bold uppercase tracking-widest">Repayment</span>
                                                 <div className="flex items-center gap-2 text-emerald-400">
                                                     <FaCalendarAlt className="text-[10px]" />
-                                                    <span className="text-[10px] font-bold uppercase">{data.duration} Days</span>
+                                                    <span className="text-[10px] font-bold uppercase">{dueDays} Days</span>
                                                 </div>
                                             </div>
                                             <div className="space-y-3">

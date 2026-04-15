@@ -3,7 +3,8 @@ import { Head, useForm } from '@inertiajs/react';
 import AdminLayout from '@/Layouts/AdminLayout';
 
 const Edit = ({ borrowSetting }) => {
-    const { data, setData, put, processing, errors } = useForm({
+    const { data, setData, post, processing, errors } = useForm({
+        _method: 'put',
         min_amount: borrowSetting.min_amount,
         max_amount: borrowSetting.max_amount,
         first_time_min_amount: borrowSetting.first_time_min_amount ?? 100,
@@ -23,7 +24,7 @@ const Edit = ({ borrowSetting }) => {
 
     const handleSubmit = (e) => {
         e.preventDefault();
-        put(route('admin.borrow-settings.update', borrowSetting.id));
+        post(route('admin.borrow-settings.update', { borrow_setting: borrowSetting.id }));
     };
 
     const handleDelete = () => {
@@ -31,7 +32,7 @@ const Edit = ({ borrowSetting }) => {
             // Need to create a delete form handler
             const form = document.createElement('form');
             form.method = 'POST';
-            form.action = route('admin.borrow-settings.destroy', borrowSetting.id);
+            form.action = route('admin.borrow-settings.destroy', { borrow_setting: borrowSetting.id });
             form.innerHTML = `
                 <input type="hidden" name="_method" value="DELETE">
                 <input type="hidden" name="_token" value="${document.querySelector('meta[name="csrf-token"]')?.content}">

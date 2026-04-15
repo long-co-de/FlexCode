@@ -153,12 +153,16 @@ class BorrowingElectricityController extends AtomicController
             return redirect()->back()->with('error', 'Electricity borrowing is currently unavailable.');
         }
 
+        $user = Auth::user();
+        $isFirstTimeBorrow = ! $user->borrowings()->where('type', 'electricity')->exists();
+        $minAmount = $isFirstTimeBorrow ? (float) $borrowSetting->first_time_min_amount : (float) $borrowSetting->min_amount;
+        $maxAmount = (float) $borrowSetting->max_amount;
+
         $request->validate([
             'electricity_provider_id' => 'required|exists:electricity_providers,id',
             'meter_number' => 'required|string',
             'meter_type' => 'required|string|in:prepaid,postpaid',
-            'amount' => "required|numeric|min:{$borrowSetting->min_amount}|max:{$borrowSetting->max_amount}",
-            'duration' => 'nullable|integer|in:3,7',
+            'amount' => "required|numeric|min:{$minAmount}|max:{$maxAmount}",
             'customer_name' => 'required|string',
             'address' => 'required|string',
             'save_as_beneficiary' => 'nullable|boolean',
@@ -166,8 +170,6 @@ class BorrowingElectricityController extends AtomicController
             'pin' => 'required|string|size:4',
             'request_id' => 'nullable|string',
         ]);
-
-        $user = Auth::user();
 
         // Rate limiting
         if ($this->isRateLimited($user->id, 'borrow_electricity')) {
@@ -195,14 +197,14 @@ class BorrowingElectricityController extends AtomicController
 
         try {
             // Process borrowing atomically
-            $borrowing = $this->processAtomicTransaction($user->id, 0, function ($lockedUser) use ($request, $provider) {
+            $borrowing = $this->processAtomicTransaction($user->id, 0, function ($lockedUser) use ($request, $provider, $borrowSetting) {
                 return $this->borrowingService->borrowElectricity(
                     $lockedUser,
                     $request->meter_number,
                     $request->amount,
                     $provider->code,
                     $request->meter_type,
-                    $request->duration ?? 7
+                    (int) $borrowSetting->due_days
                 );
             });
 

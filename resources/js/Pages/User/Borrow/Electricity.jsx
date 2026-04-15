@@ -37,12 +37,18 @@ const Electricity = ({ auth, providers, eligibility, activeBorrowings, borrowSet
 
     const borrowSettings_ = borrowSettings?.electricity || {};
     const minimumBorrowAmount = borrowSettings_?.effective_min_amount || borrowSettings_?.min_amount || 1000;
+    const dueDays = Number(borrowSettings_?.due_days ?? 7);
 
     const getInterestRate = () => {
-        if (data.duration === 3) {
-            return 10;
+        const baseRate = Number(borrowSettings_?.base_interest_rate ?? 13);
+        const goodRate = Number(borrowSettings_?.good_credit_interest_rate ?? baseRate);
+        const score = Number(eligibility?.credit_score ?? 0);
+
+        if (score >= 80) {
+            return Number.isFinite(goodRate) ? goodRate : baseRate;
         }
-        return 13;
+
+        return Number.isFinite(baseRate) ? baseRate : 13;
     };
 
     const calculateTotalRepayment = (amount) => {
@@ -62,7 +68,6 @@ const Electricity = ({ auth, providers, eligibility, activeBorrowings, borrowSet
         beneficiary_name: '',
         pin: '',
         use_bnpl: true,
-        duration: 7,
     });
 
     const handleVerifyMeter = async () => {
@@ -337,35 +342,9 @@ const Electricity = ({ auth, providers, eligibility, activeBorrowings, borrowSet
                                 </h4>
 
                                 <div className="space-y-6">
-                                    {/* Duration Selection */}
-                                    <div className="space-y-3">
-                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Select Duration</label>
-                                        <div className="grid grid-cols-2 gap-3">
-                                            <button
-                                                type="button"
-                                                onClick={() => setData('duration', 3)}
-                                                className={`py-4 rounded-2xl border-2 transition-all flex flex-col items-center justify-center gap-1 ${
-                                                    data.duration === 3
-                                                    ? 'border-sky-500 bg-sky-50 shadow-md shadow-sky-100'
-                                                    : 'border-slate-50 bg-slate-50/50 hover:border-slate-200'
-                                                }`}
-                                            >
-                                                <span className={`text-xs font-black uppercase ${data.duration === 3 ? 'text-sky-700' : 'text-slate-600'}`}>3 Days</span>
-                                                <span className={`text-[10px] font-bold ${data.duration === 3 ? 'text-sky-500' : 'text-slate-400'}`}>10% Interest</span>
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => setData('duration', 7)}
-                                                className={`py-4 rounded-2xl border-2 transition-all flex flex-col items-center justify-center gap-1 ${
-                                                    data.duration === 7
-                                                    ? 'border-sky-500 bg-sky-50 shadow-md shadow-sky-100'
-                                                    : 'border-slate-50 bg-slate-50/50 hover:border-slate-200'
-                                                }`}
-                                            >
-                                                <span className={`text-xs font-black uppercase ${data.duration === 7 ? 'text-sky-700' : 'text-slate-600'}`}>7 Days</span>
-                                                <span className={`text-[10px] font-bold ${data.duration === 7 ? 'text-sky-500' : 'text-slate-400'}`}>13% Interest</span>
-                                            </button>
-                                        </div>
+                                    <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-between">
+                                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Repayment Period</span>
+                                        <span className="text-xs font-black text-slate-700">{dueDays} days</span>
                                     </div>
 
                                     <div className="relative">
@@ -405,7 +384,7 @@ const Electricity = ({ auth, providers, eligibility, activeBorrowings, borrowSet
                                         </div>
                                         <div className="flex justify-between mb-4">
                                             <span className="text-slate-400 text-[10px] font-black uppercase tracking-widest">Due Date</span>
-                                            <span className="font-black text-sm">{data.duration} Days</span>
+                                            <span className="font-black text-sm">{dueDays} Days</span>
                                         </div>
                                         <div className="flex justify-between">
                                             <span className="text-slate-400 text-[10px] font-black uppercase tracking-widest">Interest</span>

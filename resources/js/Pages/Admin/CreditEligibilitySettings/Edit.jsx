@@ -3,7 +3,8 @@ import { Head, useForm } from '@inertiajs/react';
 import AdminLayout from '@/Layouts/AdminLayout';
 
 const Edit = ({ setting }) => {
-    const { data, setData, put, processing, errors } = useForm({
+    const { data, setData, post, processing, errors } = useForm({
+        _method: 'put',
         min_credit_score: setting.min_credit_score,
         credit_limit_90_plus: setting.credit_limit_90_plus,
         credit_limit_80_89: setting.credit_limit_80_89,
@@ -25,14 +26,14 @@ const Edit = ({ setting }) => {
 
     const handleSubmit = (e) => {
         e.preventDefault();
-        put(route('admin.credit-eligibility-settings.update', setting.id));
+        post(route('admin.credit-eligibility-settings.update', { credit_eligibility_setting: setting.id }));
     };
 
     const handleDelete = () => {
         if (confirm('Are you sure you want to delete this setting? This action cannot be undone.')) {
             const form = document.createElement('form');
             form.method = 'POST';
-            form.action = route('admin.credit-eligibility-settings.destroy', setting.id);
+            form.action = route('admin.credit-eligibility-settings.destroy', { credit_eligibility_setting: setting.id });
             form.innerHTML = `
                 <input type="hidden" name="_method" value="DELETE">
                 <input type="hidden" name="_token" value="${document.querySelector('meta[name="csrf-token"]')?.content}">

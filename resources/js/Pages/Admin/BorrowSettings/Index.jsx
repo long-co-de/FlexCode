@@ -110,7 +110,7 @@ const Index = ({ borrowSettings }) => {
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm space-x-2">
                                             <Link
-                                                href={route('admin.borrow-settings.edit', setting.id)}
+                                                href={route('admin.borrow-settings.edit', { borrow_setting: setting.id })}
                                                 className="text-blue-600 hover:text-blue-900 font-medium"
                                             >
                                                 Edit

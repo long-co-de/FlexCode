@@ -54,6 +54,7 @@ class BorrowingDataController extends AtomicController
 
         // Get borrow settings
         $borrowSetting = BorrowSetting::where('service_type', 'data')->first();
+        $isFirstTimeBorrow = ! $user->borrowings()->where('type', 'data')->exists();
 
         // Prepare eligibility response with rejection reason and action
         $eligibilityResponse = [
@@ -89,6 +90,10 @@ class BorrowingDataController extends AtomicController
                     'max_amount' => (float) $borrowSetting->max_amount,
                     'first_time_min_amount' => (float) $borrowSetting->first_time_min_amount,
                     'first_time_credit_limit' => (float) $borrowSetting->first_time_credit_limit,
+                    'is_first_time_borrow' => $isFirstTimeBorrow,
+                    'effective_min_amount' => $isFirstTimeBorrow
+                        ? (float) $borrowSetting->first_time_min_amount
+                        : (float) $borrowSetting->min_amount,
                     'base_interest_rate' => $borrowSetting->base_interest_rate,
                     'good_credit_interest_rate' => $borrowSetting->good_credit_interest_rate,
                     'due_days' => $borrowSetting->due_days,
@@ -102,11 +107,17 @@ class BorrowingDataController extends AtomicController
      */
     public function borrow(Request $request)
     {
+        $borrowSetting = BorrowSetting::where('service_type', 'data')
+            ->where('is_active', true)
+            ->first();
+        if (! $borrowSetting) {
+            return redirect()->back()->with('error', 'Data borrowing is currently unavailable.');
+        }
+
         $request->validate([
             'network_id' => 'required|exists:networks,id',
             'data_plan_id' => 'required|exists:data_plans,id',
             'phone_number' => 'required|string|regex:/^[0-9]{11}$/',
-            'duration' => 'nullable|integer|in:3,7',
             'save_as_beneficiary' => 'nullable|boolean',
             'beneficiary_name' => 'nullable|string|max:255',
             'pin' => 'required|string|size:4',
@@ -114,6 +125,9 @@ class BorrowingDataController extends AtomicController
         ]);
 
         $user = Auth::user();
+        $isFirstTimeBorrow = ! $user->borrowings()->where('type', 'data')->exists();
+        $minAmount = $isFirstTimeBorrow ? (float) $borrowSetting->first_time_min_amount : (float) $borrowSetting->min_amount;
+        $maxAmount = (float) $borrowSetting->max_amount;
 
         // Rate limiting
         if ($this->isRateLimited($user->id, 'borrow_data')) {
@@ -145,16 +159,24 @@ class BorrowingDataController extends AtomicController
             return redirect()->back()->with('error', 'This data plan is currently unavailable for borrowing. Please try another one.');
         }
 
+        $planAmount = (float) $dataPlan->selling_price;
+        if ($planAmount < $minAmount) {
+            return redirect()->back()->with('error', "Selected plan amount must be at least NGN {$minAmount}.");
+        }
+        if ($maxAmount > 0 && $planAmount > $maxAmount) {
+            return redirect()->back()->with('error', "Selected plan amount must not exceed NGN {$maxAmount}.");
+        }
+
         try {
             // Process borrowing atomically
-            $borrowing = $this->processAtomicTransaction($user->id, 0, function ($lockedUser) use ($request, $dataPlan, $network) {
+            $borrowing = $this->processAtomicTransaction($user->id, 0, function ($lockedUser) use ($request, $dataPlan, $network, $borrowSetting) {
                 return $this->borrowingService->borrowData(
                     $lockedUser,
                     $request->phone_number,
                     $dataPlan->dataplan_id ?? $dataPlan->id,
                     $dataPlan->selling_price,
                     $network->code,
-                    $request->duration ?? 7
+                    (int) $borrowSetting->due_days
                 );
             });
 
